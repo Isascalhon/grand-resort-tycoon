@@ -2655,7 +2655,9 @@ function upWall(x1, z1, x2, z2, h = 3.2, mat = upMat.wall){
   const m = B(w, h, d, mat, cx, UP_Y, cz); occluders.push(m); solid(cx - w/2, cz - d/2, cx + w/2, cz + d/2); return m;
 }
 /* Laje do 2º andar sem o buraco da escada, e cobertura sobre todo o prédio */
-ceiling(-8,-6,8,STAIR.z1,UP_Y); ceiling(-8,STAIR.z1,STAIR.x1,6,UP_Y); ceiling(STAIR.x2,STAIR.z1,8,6,UP_Y); ceiling(STAIR.x1,STAIR.z2,STAIR.x2,6,UP_Y);
+/* Laje do 2º andar: o topo fica exatamente em UP_Y (mesmo nível do último degrau e dos pisos de cima) */
+const SLAB_Y = UP_Y - .2;
+ceiling(-8,-6,8,STAIR.z1,SLAB_Y); ceiling(-8,STAIR.z1,STAIR.x1,6,SLAB_Y); ceiling(STAIR.x2,STAIR.z1,8,6,SLAB_Y); ceiling(STAIR.x1,STAIR.z2,STAIR.x2,6,SLAB_Y);
 floor(-8,-6,8,STAIR.z1, upMat.carpet, UP_Y + .01); floor(-8,STAIR.z1,STAIR.x1,6, upMat.carpet, UP_Y + .01);
 floor(STAIR.x2,STAIR.z1,8,6, upMat.carpet, UP_Y + .01); floor(STAIR.x1,STAIR.z2,STAIR.x2,6, upMat.carpet, UP_Y + .01);
 ceiling(-8,-6,8,6,ROOF_Y);
@@ -2724,11 +2726,8 @@ for (const z of [STAIR.z1 - .06, STAIR.z2 + .06]){
    não se entra pelas laterais, nem pelo 2º andar pela parte de baixo, nem pelo térreo pela saída de cima */
 for (const f of [0, 1]){
   BUILD_FLOOR = f;
-  for (const z of [STAIR.z1, STAIR.z2]){
-    // no 2º andar o trilho norte termina antes do topo: é a saída da escada para o hall
-    const xEnd = f && z === STAIR.z1 ? STAIR.x2 - 1.3 : STAIR.x2;
-    solid(STAIR.x1, z - .04, xEnd, z + .04);
-  }
+  // trilhos inteiros: a saída do 2º andar é pelo patamar (x ≥ STAIR.x2), nunca pelo meio da rampa
+  for (const z of [STAIR.z1, STAIR.z2]) solid(STAIR.x1, z - .04, STAIR.x2, z + .04);
 }
 BUILD_FLOOR = 0; solid(STAIR.x2 - .1, STAIR.z1, STAIR.x2 + .2, STAIR.z2);
 BUILD_FLOOR = 1; solid(STAIR.x1 - .06, STAIR.z1, STAIR.x1 + .06, STAIR.z2);
