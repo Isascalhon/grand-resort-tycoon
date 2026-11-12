@@ -304,6 +304,89 @@ const TEX = {
   thatch: tex(256, (g,s) => { seed = 12; g.fillStyle = '#C99A52'; g.fillRect(0,0,s,s); for (let i = 0; i < 900; i++){ g.strokeStyle = rnd() < .5 ? 'rgba(120,80,30,.5)' : 'rgba(240,210,140,.5)'; const x = rnd()*s, y = rnd()*s; g.beginPath(); g.moveTo(x,y); g.lineTo(x + (rnd()-.5)*4, y + 14 + rnd()*10); g.stroke(); } }),
   wallpaper: tex(256, (g,s) => { g.fillStyle = '#EADFD0'; g.fillRect(0,0,s,s); g.fillStyle = 'rgba(185,160,120,.22)'; for (let x = 0; x < s; x += 32) g.fillRect(x,0,8,s); }),
 };
+/* ---------- Texturas PBR procedurais (512 px) ----------
+   Cada material tem cor (map) e relevo (bumpMap), gerados em canvas sem imagens externas.
+   A rugosidade e a metalicidade são os valores fixos do material. */
+const PBR = {};
+function pbrCanvas(draw){ const c = document.createElement('canvas'); c.width = c.height = 512; draw(c.getContext('2d'), 512); return c; }
+function pbrDefine(name, spec, d, h){
+  const map = new THREE.CanvasTexture(pbrCanvas(d)), bump = new THREE.CanvasTexture(pbrCanvas(h));
+  map.encoding = THREE.sRGBEncoding; bump.encoding = THREE.LinearEncoding;
+  for (const t of [map, bump]){ t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); }
+  PBR[name] = Object.assign({map, bump}, spec);
+}
+function pbrCloud(g, n, r0, r1, rgb, a){
+  for (let i = 0; i < n; i++){ const x = Math.random()*512, y = Math.random()*512, r = r0 + Math.random()*(r1 - r0);
+    for (const dx of [-512, 0, 512]) for (const dy of [-512, 0, 512]){ const px = x + dx, py = y + dy, gr = g.createRadialGradient(px, py, 0, px, py, r);
+      gr.addColorStop(0, `rgba(${rgb},${a})`); gr.addColorStop(1, `rgba(${rgb},0)`); g.fillStyle = gr; g.fillRect(px - r, py - r, r*2, r*2); } }
+}
+function pbrSpeck(g, n, a){
+  for (let i = 0; i < n; i++){ g.fillStyle = Math.random() < .5 ? `rgba(0,0,0,${a*Math.random()})` : `rgba(255,255,255,${a*Math.random()})`; g.fillRect(Math.random()*512, Math.random()*512, 2, 2); }
+}
+function pbrVein(g, c, w){
+  g.strokeStyle = c; g.lineWidth = w; g.beginPath(); g.moveTo(Math.random()*512, Math.random()*512);
+  for (let k = 0; k < 3; k++) g.bezierCurveTo(Math.random()*512, Math.random()*512, Math.random()*512, Math.random()*512, Math.random()*512, Math.random()*512);
+  g.stroke();
+}
+function pbrGrid(cell, fn){ for (let y = 0; y < 512; y += cell) for (let x = 0; x < 512; x += cell) fn(x, y, cell); }
+function pbrFill(g, c){ g.fillStyle = c; g.fillRect(0, 0, 512, 512); }
+pbrDefine('marbleCarrara', {roughness:.14, metalness:.08, bumpScale:.005},
+  g => { pbrFill(g, '#F7F7F5'); pbrCloud(g, 40, 40, 140, '110,110,118', .08); for (let i = 0; i < 12; i++) pbrVein(g, 'rgba(150,150,160,.35)', 1.2); for (let i = 0; i < 3; i++) pbrVein(g, 'rgba(234,179,8,.5)', .8); },
+  g => { pbrFill(g, '#808080'); pbrCloud(g, 30, 40, 120, '255,255,255', .25); for (let i = 0; i < 12; i++) pbrVein(g, 'rgba(255,255,255,.7)', 1.5); });
+pbrDefine('carpetCrimson', {roughness:.92, metalness:0, bumpScale:.025},
+  g => { pbrFill(g, '#7F1D1D'); for (let i = 0; i < 512; i += 3){ g.fillStyle = 'rgba(0,0,0,.08)'; g.fillRect(i, 0, 1, 512); g.fillRect(0, i, 512, 1); }
+    pbrGrid(128, (x, y, c) => { g.beginPath(); g.moveTo(x + c/2, y + 8); g.lineTo(x + c - 8, y + c/2); g.lineTo(x + c/2, y + c - 8); g.lineTo(x + 8, y + c/2); g.closePath(); g.strokeStyle = '#D97706'; g.lineWidth = 4; g.stroke(); });
+    pbrSpeck(g, 6000, .25); },
+  g => { pbrFill(g, '#707070'); for (let i = 0; i < 512; i += 3){ g.fillStyle = 'rgba(255,255,255,.12)'; g.fillRect(i, 0, 1, 512); } pbrSpeck(g, 4000, .3); });
+pbrDefine('brickRuina', {roughness:.88, metalness:0, bumpScale:.045},
+  g => { pbrFill(g, '#3A2A22'); const cols = ['#9A4F34','#7D3F2A','#A65E40','#6E3A28'];
+    for (let r = 0; r < 16; r++) for (let c = -1; c < 8; c++){ g.fillStyle = cols[(r + c + 8) % 4]; g.fillRect(c*64 + (r % 2)*32 + 2, r*32 + 2, 60, 28); }
+    for (let i = 0; i < 12; i++){ g.strokeStyle = 'rgba(20,12,8,.7)'; g.lineWidth = 1.5; g.beginPath(); let x = Math.random()*512, y = Math.random()*512; g.moveTo(x, y); for (let k = 0; k < 4; k++){ x += (Math.random()-.5)*40; y += Math.random()*30; g.lineTo(x, y); } g.stroke(); }
+    pbrCloud(g, 15, 20, 60, '70,110,50', .35); pbrCloud(g, 20, 30, 80, '20,15,12', .3); pbrSpeck(g, 3000, .2); },
+  g => { pbrFill(g, '#202020'); for (let r = 0; r < 16; r++) for (let c = -1; c < 8; c++){ g.fillStyle = `rgb(${170 + ((r*7 + c*13) % 40)},${170 + ((r*7 + c*13) % 40)},${170 + ((r*7 + c*13) % 40)})`; g.fillRect(c*64 + (r % 2)*32 + 2, r*32 + 2, 60, 28); } });
+pbrDefine('modernFacade', {roughness:.45, metalness:0, bumpScale:.015},
+  g => { pbrFill(g, '#E7E5E4'); pbrCloud(g, 10, 60, 160, '255,255,255', .05); pbrGrid(128, (x, y, c) => { g.strokeStyle = 'rgba(120,115,110,.5)'; g.lineWidth = 2; g.strokeRect(x, y, c, c); }); },
+  g => { pbrFill(g, '#8A8A8A'); pbrGrid(128, (x, y, c) => { g.strokeStyle = '#404040'; g.lineWidth = 3; g.strokeRect(x, y, c, c); }); });
+pbrDefine('luxuryMarbleGold', {roughness:.22, metalness:.35, bumpScale:.004},
+  g => { pbrFill(g, '#FEF3C7'); pbrCloud(g, 30, 40, 140, '190,160,100', .08); pbrSpeck(g, 4000, .2); g.fillStyle = '#EAB308'; g.fillRect(0, 250, 512, 12); g.fillRect(250, 0, 8, 512); },
+  g => { pbrFill(g, '#8A8A8A'); g.fillStyle = '#303030'; g.fillRect(0, 246, 512, 2); g.fillRect(0, 262, 512, 2); pbrSpeck(g, 3000, .3); });
+pbrDefine('oakWood', {roughness:.55, metalness:0, bumpScale:.015},
+  g => { const cols = ['#C9955A','#BC8A50','#D2A36A','#B98650']; for (let r = 0; r < 4; r++){ g.fillStyle = cols[r]; g.fillRect(0, r*128, 512, 128); }
+    for (let i = 0; i < 40; i++) pbrVein(g, 'rgba(110,70,30,.22)', 1);
+    for (let r = 0; r < 4; r++){ g.fillStyle = '#7A4A22'; g.beginPath(); g.ellipse(120 + r*90, r*128 + 64, 14, 8, 0, 0, 6.3); g.fill(); }
+    g.strokeStyle = '#5A3A1E'; g.lineWidth = 3; for (let r = 1; r < 4; r++){ g.beginPath(); g.moveTo(0, r*128); g.lineTo(512, r*128); g.stroke(); } },
+  g => { pbrFill(g, '#9A9A9A'); for (let r = 0; r < 4; r++){ g.fillStyle = r % 2 ? '#A8A8A8' : '#9A9A9A'; g.fillRect(0, r*128, 512, 128); } for (let i = 0; i < 40; i++) pbrVein(g, '#606060', 1); g.fillStyle = '#202020'; for (let r = 1; r < 4; r++) g.fillRect(0, r*128 - 2, 512, 4); });
+pbrDefine('teakDeck', {roughness:.65, metalness:0, bumpScale:.02},
+  g => { const cols = ['#B98A5E','#C49A6C','#AD8054']; for (let c = 0; c < 8; c++){ g.fillStyle = cols[c % 3]; g.fillRect(c*64, 0, 64, 512); }
+    for (let i = 0; i < 30; i++) pbrVein(g, 'rgba(90,55,25,.2)', 1); g.fillStyle = 'rgba(60,35,15,.6)'; for (let c = 0; c < 8; c++) g.fillRect(c*64, 0, 3, 512);
+    pbrCloud(g, 10, 60, 140, '230,200,160', .1); },
+  g => { pbrFill(g, '#B0B0B0'); g.fillStyle = '#202020'; for (let c = 0; c < 8; c++) g.fillRect(c*64, 0, 4, 512); for (let y = 0; y < 512; y += 32){ g.fillStyle = '#303030'; g.fillRect(0, y, 512, 2); } });
+pbrDefine('ceramicTile', {roughness:.18, metalness:0, bumpScale:.015},
+  g => { pbrGrid(128, (x, y, c) => { g.fillStyle = ((x + y) / c) % 2 ? '#CFEEF0' : '#F4F7F8'; g.fillRect(x, y, c, c); g.strokeStyle = '#9FB7BC'; g.lineWidth = 3; g.strokeRect(x, y, c, c); }); },
+  g => { pbrGrid(128, (x, y, c) => { g.fillStyle = '#D8D8D8'; g.fillRect(x, y, c, c); g.strokeStyle = '#303030'; g.lineWidth = 6; g.strokeRect(x, y, c, c); }); });
+pbrDefine('kitchenChecker', {roughness:.35, metalness:0, bumpScale:.01},
+  g => { pbrGrid(128, (x, y, c) => { g.fillStyle = ((x + y) / c) % 2 ? '#3B4048' : '#EDEDE8'; g.fillRect(x, y, c, c); g.strokeStyle = '#8A8F96'; g.lineWidth = 3; g.strokeRect(x, y, c, c); }); },
+  g => { pbrGrid(128, (x, y, c) => { g.fillStyle = ((x + y) / c) % 2 ? '#707070' : '#E0E0E0'; g.fillRect(x, y, c, c); }); });
+pbrDefine('asphaltRoad', {roughness:.85, metalness:0, bumpScale:.03},
+  g => { pbrFill(g, '#262626'); pbrSpeck(g, 14000, .6); pbrCloud(g, 20, 20, 60, '90,90,90', .08); g.fillStyle = '#EAB308'; g.fillRect(252, 0, 8, 512); g.fillStyle = '#F5F5F5'; for (let y = 0; y < 512; y += 96) g.fillRect(124, y, 6, 48); },
+  g => { pbrFill(g, '#808080'); pbrSpeck(g, 14000, .8); });
+pbrDefine('sidewalkStone', {roughness:.78, metalness:0, bumpScale:.02},
+  g => { const tones = ['#C9C9C6','#BDBDBA','#D2D2CF']; for (let r = 0; r < 16; r++) for (let c = -1; c < 8; c++){ g.fillStyle = tones[(r + c + 9) % 3]; g.fillRect(c*64 + (r % 2)*32, r*32, 64, 32); g.strokeStyle = '#8F8F8C'; g.lineWidth = 2; g.strokeRect(c*64 + (r % 2)*32, r*32, 64, 32); } },
+  g => { pbrFill(g, '#B0B0B0'); for (let r = 0; r < 16; r++) for (let c = -1; c < 8; c++){ g.strokeStyle = '#404040'; g.lineWidth = 2; g.strokeRect(c*64 + (r % 2)*32, r*32, 64, 32); } });
+pbrDefine('brushedSteel', {roughness:.28, metalness:.85, bumpScale:0},
+  g => { pbrFill(g, '#CBD5E1'); for (let i = 0; i < 500; i++){ g.fillStyle = Math.random() < .5 ? `rgba(255,255,255,${.3*Math.random()})` : `rgba(90,100,110,${.25*Math.random()})`; g.fillRect(0, Math.random()*512, 512, 1); } },
+  g => { pbrFill(g, '#808080'); for (let i = 0; i < 500; i++){ g.fillStyle = `rgba(255,255,255,${.2*Math.random()})`; g.fillRect(0, Math.random()*512, 512, 1); } });
+pbrDefine('wovenFabric', {roughness:.9, metalness:0, bumpScale:.012},
+  g => { pbrFill(g, '#E8E2D6'); for (let i = 0; i < 512; i += 4){ g.fillStyle = 'rgba(90,80,60,.18)'; g.fillRect(i, 0, 1, 512); g.fillRect(0, i, 512, 1); } },
+  g => { pbrFill(g, '#808080'); for (let i = 0; i < 512; i += 4){ g.fillStyle = 'rgba(255,255,255,.2)'; g.fillRect(i, 0, 2, 512); g.fillStyle = 'rgba(0,0,0,.2)'; g.fillRect(0, i, 512, 2); } });
+pbrDefine('poolWater', {roughness:.08, metalness:0, bumpScale:0, transparent:true, opacity:.82},
+  g => { pbrFill(g, '#2FB8CC'); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1.5; for (let i = 0; i < 50; i++){ g.beginPath(); g.arc(Math.random()*512, Math.random()*512, 10 + Math.random()*40, 0, 6.3); g.stroke(); } },
+  g => { pbrFill(g, '#808080'); pbrCloud(g, 20, 30, 90, '255,255,255', .2); });
+/* Material PBR com repetição: w e d em metros, tile = metros por repetição da textura */
+function pbrMat(name, w, d, tile, o = {}){
+  const p = PBR[name];
+  return M(0xFFFFFF, Object.assign({map:rep(p.map, w/tile, d/tile), bumpMap:rep(p.bump, w/tile, d/tile), bumpScale:p.bumpScale, roughness:p.roughness, metalness:p.metalness}, o));
+}
 function rep(t, rx, ry){ const c = t.clone(); c.needsUpdate = true; c.repeat.set(rx, ry); return c; }
 function label(text, o = {}){
   const w = o.w || 512, h = o.h || 128;
@@ -510,9 +593,9 @@ let lobbyFloor;
 if (THREE.Reflector){
   const mirror = new THREE.Reflector(new THREE.PlaneGeometry(16, 12), {clipBias:.003, textureWidth:Math.min(1024, innerWidth), textureHeight:Math.min(768, innerHeight), color:0x8C8C8C});
   mirror.rotation.x = -Math.PI/2; mirror.position.set(0, .004, 0); scene.add(mirror);
-  lobbyFloor = floor(-8,-6,8,6, floorMat(TEX.marble,16,12,2.5,{transparent:true, opacity:.8, roughness:.12, metalness:.05}), .012);
+  lobbyFloor = floor(-8,-6,8,6, pbrMat('marbleCarrara',16,12,2.5,{transparent:true, opacity:.8}), .012);
 } else {
-  lobbyFloor = floor(-8,-6,8,6, floorMat(TEX.marble,16,12,2.5,{roughness:.1, metalness:.1}), .012);
+  lobbyFloor = floor(-8,-6,8,6, pbrMat('marbleCarrara',16,12,2.5), .012);
 }
 floor(-1.1,-2.85,1.1,6, M(0xA3172B,{roughness:1}), .022);
 floor(-1.25,-2.95,1.25,6, M(0xD8A64A,{metalness:.6, roughness:.4}), .018);
@@ -1552,8 +1635,12 @@ function move(dt){
   const sway = moving && !jumpH && !RM.matches ? Math.sin(bob)*.035 : 0;
   const h = stairH(p.x, p.z);
   if (h !== null) PLAYER_LEVEL = h > UP_Y/2 ? 1 : 0;
-  p.y = 1.65 + (h !== null ? h : (PLAYER_LEVEL ? UP_Y : 0)) + jumpH + sway;
+  // altura dos olhos acompanha o piso com suavização: sem salto ao entrar, subir ou sair da escada
+  const eyeTarget = 1.65 + (h !== null ? h : (PLAYER_LEVEL ? UP_Y : 0));
+  eyeBase = eyeBase === null ? eyeTarget : eyeBase + (eyeTarget - eyeBase) * Math.min(1, dt*14);
+  p.y = eyeBase + jumpH + sway;
 }
+let eyeBase = null;
 
 /* ============================================================
    MIRA · Raycaster do centro da tela (alcance 4 m, bloqueado por paredes)
@@ -1884,16 +1971,24 @@ ANIM.push((dt, t) => {
 });
 /* GLTF / Mixamo: a Chef Maria pode trocar o boneco procedural por um modelo rigado com animação do Mixamo.
    Sem arquivo configurado, ou se o carregamento falhar, ela segue com o boneco procedural. */
-const MIXAMO = {chef: null};   // ex.: 'models/chef_idle.glb' (exportado do Mixamo em glTF/GLB, com o clipe de idle)
+/* Registro dos modelos Mixamo (.glb). Só carrega com MIXAMO_LOAD = true, para não gerar erros de rede
+   enquanto os arquivos não estão em ./models. Sem o arquivo, cada personagem segue com o boneco procedural. */
+const MIXAMO_MODELS = {
+  maid: './models/maid.glb', receptionist: './models/receptionist.glb', chef: './models/chef.glb',
+  guest_tourist: './models/guest_tourist.glb', guest_exec: './models/guest_exec.glb', guest_vip: './models/guest_vip.glb'
+};
+const MIXAMO_LOAD = false;
 const MIXERS = [];
-if (MIXAMO.chef && typeof THREE.GLTFLoader === 'function'){
-  new THREE.GLTFLoader().load(MIXAMO.chef, gltf => {
-    maria.body.visible = false;
-    gltf.scene.traverse(o => { o.userData.iaRoot = maria.g; if (o.isMesh) o.castShadow = true; });
-    maria.g.add(gltf.scene);
-    if (gltf.animations.length){ const mx = new THREE.AnimationMixer(gltf.scene); mx.clipAction(gltf.animations[0]).play(); MIXERS.push(mx); }
-  }, undefined, () => { /* sem o arquivo, a Chef Maria continua com o boneco procedural */ });
+function loadMixamo(key, onLoad){
+  if (!MIXAMO_LOAD || typeof THREE.GLTFLoader !== 'function') return;
+  new THREE.GLTFLoader().load(MIXAMO_MODELS[key], onLoad, undefined, () => { /* sem o arquivo, o boneco procedural continua */ });
 }
+loadMixamo('chef', gltf => {
+  maria.body.visible = false;
+  gltf.scene.traverse(o => { o.userData.iaRoot = maria.g; if (o.isMesh) o.castShadow = true; });
+  maria.g.add(gltf.scene);
+  if (gltf.animations.length){ const mx = new THREE.AnimationMixer(gltf.scene); mx.clipAction(gltf.animations[0]).play(); MIXERS.push(mx); }
+});
 ANIM.push((dt) => MIXERS.forEach(m => m.update(dt)));
 const mmss = s =>`${Math.floor(Math.max(0,s)/60)}:${pad2(Math.floor(Math.max(0,s) % 60))}`;
 function openChef(){ pcOpen = true; $('chef').hidden = false; renderChef(); if (controls.isLocked) controls.unlock(); }
@@ -2444,12 +2539,6 @@ const decorateClient = (n, persona) => PERSONAS[persona].decor(n.body, n.g);
 const FACADE = new THREE.Group(); scene.add(FACADE);
 const facadeSolids = [];
 const FX = {
-  brick: tex(256, (g,s) => {
-    g.fillStyle = '#7E4E3A'; g.fillRect(0,0,s,s);
-    for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++){ g.fillStyle = ['#9C6A4E','#86523A','#A8785A'][(r + c) % 3]; g.fillRect(c*64 + (r % 2)*32 + 2, r*32 + 2, 60, 28); }
-    seed = 41; noise(g, s, s, .15, 2500);
-    g.fillStyle = 'rgba(200,200,190,.4)'; for (let i = 0; i < 9; i++) g.fillRect(rnd()*s, rnd()*s, 40 + rnd()*60, 20 + rnd()*40);
-  }),
   dirt: tex(256, (g,s) => { g.fillStyle = '#7A5A3A'; g.fillRect(0,0,s,s); seed = 42; noise(g, s, s, .3, 4000); }),
 };
 function buildFacade(stage){
@@ -2465,7 +2554,7 @@ function buildFacade(stage){
   const slabs = mat => { plane(6.5, 5, mat, -4.75, 2.5, 6.13); plane(6.5, 5, mat, 4.75, 2.5, 6.13); plane(3, 1.8, mat, 0, 4.1, 6.13); };
 
   if (stage === 0){
-    slabs(new THREE.MeshStandardMaterial({map:rep(FX.brick, 2, 1), color:0x8C7A6A, roughness:1}));
+    slabs(new THREE.MeshStandardMaterial({map:rep(PBR.brickRuina.map, 2, 1), bumpMap:rep(PBR.brickRuina.bump, 2, 1), bumpScale:PBR.brickRuina.bumpScale, color:0x8C7A6A, roughness:PBR.brickRuina.roughness}));
     for (const x of WIN){
       plane(1.6, 1.6, new THREE.MeshStandardMaterial({map:TEX.woodPanel, roughness:.9}), x, 2.6, 6.14);
       box(1.8, .08, .06, MAT.woodDark, x, 1.75, 6.15); box(1.8, .08, .06, MAT.woodDark, x, 3.35, 6.15);
@@ -2531,7 +2620,7 @@ function stairH(x, z){
 function levelAt(x, z){ const h = stairH(x, z); return h === null ? PLAYER_LEVEL : (h > UP_Y/2 ? 1 : 0); }
 
 BUILD_FLOOR = 1;
-const upMat = {wall:M(0xEFE6D4,{roughness:.8}), carpet:M(0x7A2E3A,{roughness:1}), marble:M(0xFFFFFF,{map:rep(TEX.marbleWhite, 3, 2), roughness:.2}), white:M(0xF7F3EA,{roughness:.8})};
+const upMat = {wall:M(0xEFE6D4,{roughness:.8}), carpet:pbrMat('carpetCrimson', 6, 5, 1), marble:pbrMat('marbleCarrara', 3, 2, 1), white:M(0xF7F3EA,{roughness:.8})};
 /* Parede do 2º andar: caixa com colisão no andar superior */
 function upWall(x1, z1, x2, z2, h = 3.2, mat = upMat.wall){
   const w = Math.max(Math.abs(x2 - x1), .2), d = Math.max(Math.abs(z2 - z1), .2), cx = (x1 + x2)/2, cz = (z1 + z2)/2;
@@ -2607,7 +2696,11 @@ for (const z of [STAIR.z1 - .06, STAIR.z2 + .06]){
    não se entra pelas laterais, nem pelo 2º andar pela parte de baixo, nem pelo térreo pela saída de cima */
 for (const f of [0, 1]){
   BUILD_FLOOR = f;
-  for (const z of [STAIR.z1, STAIR.z2]) solid(STAIR.x1, z - .04, STAIR.x2, z + .04);
+  for (const z of [STAIR.z1, STAIR.z2]){
+    // no 2º andar o trilho norte termina antes do topo: é a saída da escada para o hall
+    const xEnd = f && z === STAIR.z1 ? STAIR.x2 - 1.3 : STAIR.x2;
+    solid(STAIR.x1, z - .04, xEnd, z + .04);
+  }
 }
 BUILD_FLOOR = 0; solid(STAIR.x2 - .1, STAIR.z1, STAIR.x2 + .2, STAIR.z2);
 BUILD_FLOOR = 1; solid(STAIR.x1 - .06, STAIR.z1, STAIR.x1 + .06, STAIR.z2);
