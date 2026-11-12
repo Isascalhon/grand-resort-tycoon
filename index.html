@@ -599,10 +599,10 @@ if (THREE.Reflector){
 }
 floor(-1.1,-2.85,1.1,6, M(0xA3172B,{roughness:1}), .022);
 floor(-1.25,-2.95,1.25,6, M(0xD8A64A,{metalness:.6, roughness:.4}), .018);
-wallX(6, -8, 8, 5, MAT.wall, [[-1.5,1.5]], .2, 3.2);
+wallX(6, -8, 8, 5.2, MAT.wall, [[-1.5,1.5]], .2, 3.2);
 wallX(-6, -8, 8, 5, MAT.wall, [[4.5,7]]);
 wallZ(-8, -6, 6, 5, MAT.wall, [[-1.5,1.5]]);
-wallZ(8, -6, 6, 5, MAT.wall, [[-1.5,1.5]]);
+wallZ(8, -6, 6, 5.2, MAT.wall, [[-1.5,1.5]]);
 
 // painel de madeira e logotipo dourado na parede do fundo
 B(8.4, 4.4, .06, M(0xFFFFFF,{map:rep(TEX.woodPanel,4,2), roughness:.55}), 0, 0, -5.87);
@@ -1251,7 +1251,7 @@ const NODES = {
   CW:[-9.6,0], CA:[-12.5,0], CB:[-21.5,0], R101:[-12.5,-5], R102:[-12.5,5], R103:[-21.5,-5], R104:[-21.5,5],
   DW:[9.5,0], DM:[9.8,6.4], KD:[19,6.4], KI:[22,6.2], ST:[26.1,-1.5],
   /* 2º andar: o terceiro valor é o andar do nó (0 térreo, 1 superior). SB/SU são o pé e o topo da escada */
-  SB:[1.6,5.1,0], SU:[7.6,5.1,1], UH:[6.6,2.5,1], UC:[0,2.5,1], UW:[-5.8,2.5,1],
+  SB:[1.6,4.75,0], SU:[7.6,4.75,1], UH:[6.6,2.5,1], UC:[0,2.5,1], UW:[-5.8,2.5,1],
   D201:[-5.8,-.4,1], U201:[-7.2,-2.5,1], D202:[-1.4,-.4,1], U202:[-2.6,-2.5,1], D203:[4.4,-.4,1], U203:[1.8,-2.6,1],
 };
 const EDGES = [['OUT','ENT'],['ENT','LS'],['LS','LC'],['LC','LW'],['LC','LE'],['LE','LN'],['LN','PT'],['PT','DK'],
@@ -2630,7 +2630,7 @@ function buildFacade(stage){
    Suítes do 2º andar entram por etapa (201/202 em Modernização, 203 em Alto Padrão) e recebem sujeira e crises.
    ============================================================ */
 const UP_Y = 5.2, ROOF_Y = 8.4;
-const STAIR = {x1:1.9, x2:7.7, z1:4.4, z2:5.8};   // escada encostada na parede sul: sobe de x1 (térreo) até x2 (2º andar)
+const STAIR = {x1:1.9, x2:7.7, z1:4.05, z2:5.45};   // escada recuada da parede sul (folga de 0,35 m): sobe de x1 (térreo) até x2 (2º andar)
 let PLAYER_LEVEL = 0;
 /* Altura do piso dentro da escada (0 embaixo, UP_Y em cima); null fora dela */
 function stairH(x, z){
