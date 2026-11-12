@@ -1226,20 +1226,57 @@ function collectBar(){
 
 /* Paisagismo: palmeiras, arbustos, cerca viva, postes */
 const palms = [];
+const PALM_LEAF = M(0x2E8B4E, {roughness:.6, side:THREE.DoubleSide});
+const PALM_LEAF2 = M(0x3F9E55, {roughness:.6, side:THREE.DoubleSide});
+/* Frond de palmeira: faixa que sai do centro, afina até a ponta, cai pelo peso e tem folíolos serrilhados */
+function frondGeometry(len){
+  const segs = 14, rows = 4, g = new THREE.PlaneGeometry(1, 1, segs, rows), p = g.attributes.position;
+  for (let i = 0; i < p.count; i++){
+    const t = p.getX(i) + .5, s = p.getY(i);            // t: 0 na base → 1 na ponta; s: -.5..+.5 através da folha
+    const width = Math.sin(Math.PI * Math.min(1, t*.95 + .05)) * .22;
+    const serra = (Math.round(s*rows*2) % 2 ? .035 : -.035) * (t > .08 ? 1 : 0);
+    p.setXYZ(i, t*len, -.42*t*t*len, s*width*2 + serra*Math.sign(s));
+  }
+  g.computeVertexNormals(); return g;
+}
+function jitterGeometry(geo, amt){
+  const p = geo.attributes.position;
+  for (let i = 0; i < p.count; i++) p.setXYZ(i, p.getX(i)*(1 + (rnd()-.5)*amt), p.getY(i)*(1 + (rnd()-.5)*amt), p.getZ(i)*(1 + (rnd()-.5)*amt));
+  geo.computeVertexNormals(); return geo;
+}
 function palm(x, z, h = 5, lean = .6, ph = 0){
   const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
   const n = 8;
   for (let i = 0; i < n; i++){ const t = i/n; CY(.2 - t*.08, .22 - t*.08, h/n + .02, i % 2 ? MAT.trunk : M(0x9B6B3E,{roughness:.9}), lean*t*t*1.4, h*t, 0, g, 10); }
   const crown = new THREE.Group(); crown.position.set(lean*1.4, h, 0); g.add(crown);
-  const ls = new THREE.Shape(); ls.moveTo(0,0); ls.quadraticCurveTo(.32,1.2,0,2.5); ls.quadraticCurveTo(-.32,1.2,0,0);
-  const lg = new THREE.ShapeGeometry(ls, 8);
-  for (let k = 0; k < 9; k++){ const m = new THREE.Mesh(lg, k % 2 ? MAT.plant : MAT.plant2); m.rotation.order = 'YXZ'; m.rotation.set(-Math.PI/2 - .25 - (k % 3)*.12, k/9*Math.PI*2 + ph, 0); m.castShadow = true; crown.add(m); }
+  // fronds: folhas arqueadas com caimento e folíolos serrilhados (geometria própria, dupla face)
+  const fg = frondGeometry(2.6);
+  for (let k = 0; k < 9; k++){
+    const arm = new THREE.Group(); arm.rotation.y = k/9*Math.PI*2 + ph; crown.add(arm);
+    const f = new THREE.Mesh(fg, k % 2 ? PALM_LEAF : PALM_LEAF2); f.rotation.z = .3 + (k % 3)*.08; f.castShadow = true; arm.add(f);
+  }
   for (const [dx,dz] of [[.12,0],[-.08,.1],[0,-.12]]) SPH(.11, M(0x6B4423), dx, -.12, dz, crown, 8);
   solid(x - .25, z - .25, x + .25, z + .25); palms.push({crown, ph}); return g;
 }
-[[-2.5,-11],[-2.5,-19],[-2.5,-27],[22.8,-11.5],[23,-26],[10,-29],[3,-29.5],[16.5,-29],[26,-15],[28.5,-23],[-5,10.5],[5,10.5],[-20,-15],[-12,-16],[-26,-28],[29,-31],[-27,11],[29,11]].forEach(([x,z],i) => palm(x, z, 4.4 + (i % 4)*.5, i % 2 ? .6 : -.5, i));
+[[-2.5,-11],[-2.5,-19],[-2.5,-27],[22.8,-11.5],[23,-26],[10,-29],[3,-29.5],[16.5,-29],[26,-15],[28.5,-23],[-10.5,9.5],[5,10.5],[-20,-15],[-12,-16],[-26,-28],[29,-31],[-27,11],[29,11]].forEach(([x,z],i) => palm(x, z, 4.4 + (i % 4)*.5, i % 2 ? .6 : -.5, i));
 ANIM.push((dt, t) => { if (!RM.matches) palms.forEach(p => { p.crown.rotation.z = Math.sin(t*1.1 + p.ph)*.04; p.crown.rotation.x = Math.cos(t*.9 + p.ph)*.03; }); });
-function bush(x, z, s = 1){ seed = Math.floor(Math.abs(x*13 + z*29)) + 1; for (let k = 0; k < 5; k++) SPH((.35 + rnd()*.3)*s, k % 2 ? MAT.hedge : MAT.plant2, x + (rnd()-.5)*.8*s, .3*s, z + (rnd()-.5)*.8*s, scene, 10); solid(x - .5*s, z - .5*s, x + .5*s, z + .5*s); }
+/* Arbusto: agrupamento de copas irregulares (icosaedros com ruído), tons de verde variados e flores */
+const BUSH_GREENS = [0x2E7D3A, 0x3C8A45, 0x4E9B4A, 0x2F6E3E, 0x5BA752];
+const BUSH_FLOWERS = [0xE86A8A, 0xF2D15C, 0xFFFFFF];
+function bush(x, z, s = 1){
+  seed = Math.floor(Math.abs(x*13 + z*29)) + 1;
+  const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+  for (let k = 0; k < 7; k++){
+    const r = (.28 + rnd()*.22)*s, col = BUSH_GREENS[Math.floor(rnd()*BUSH_GREENS.length)];
+    const m = new THREE.Mesh(jitterGeometry(new THREE.IcosahedronGeometry(r, 2), .18), M(col, {roughness:.85}));
+    m.position.set((rnd()-.5)*.9*s, (.25 + rnd()*.25)*s, (rnd()-.5)*.9*s); m.castShadow = true; g.add(m);
+  }
+  for (let k = 0; k < 4; k++){
+    const f = new THREE.Mesh(new THREE.SphereGeometry(.05*s, 6, 4), M(BUSH_FLOWERS[Math.floor(rnd()*BUSH_FLOWERS.length)], {roughness:.6}));
+    f.position.set((rnd()-.5)*.9*s, (.55 + rnd()*.25)*s, (rnd()-.5)*.9*s); g.add(f);
+  }
+  solid(x - .5*s, z - .5*s, x + .5*s, z + .5*s);
+}
 [[-3,6.8],[3,6.8],[-6,7],[6,7],[9,9],[-9,11],[-1.8,-9],[8.2,-9],[21.5,-14],[21.5,-21],[0,-28.5],[13,-28.5],[-15,-12],[24,9.5]].forEach(([x,z]) => bush(x, z));
 for (const [x1,z1,x2,z2] of [[-29.5,-33.5,31.5,-32.9],[-29.5,12.9,31.5,13.5],[-29.5,-33.5,-28.9,13.5],[30.9,-33.5,31.5,13.5]])
   B(x2 - x1, 1.3, z2 - z1, MAT.hedge, (x1 + x2)/2, 0, (z1 + z2)/2);
