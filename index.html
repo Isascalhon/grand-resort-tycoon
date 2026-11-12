@@ -2853,6 +2853,107 @@ function buySuite(room){
 }
 
 
+/* ============================================================
+   CIDADE · estilo Nova York ao redor do hotel: avenida de 4 faixas, ruas laterais, calçadas, 16 prédios com
+   janelas e vitrines, postes, semáforos e carros em movimento. Decorativa: sem colisão, sem sombra e fora da
+   área do jogador, então não pesa na jogabilidade.
+   ============================================================ */
+function buildCity(){
+  const deco = m => { m.castShadow = false; m.receiveShadow = false; scene.add(m); return m; };
+  const road = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pbrMat('asphaltRoad', w, d, 12)); m.rotation.x = -Math.PI/2; m.position.set(x, .01, z); deco(m); };
+  const walk = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pbrMat('sidewalkStone', w, d, 4)); m.rotation.x = -Math.PI/2; m.position.set(x, .12, z); deco(m); };
+  const cityWindows = (base, lit) => tex(256, (g,s) => {
+    g.fillStyle = base; g.fillRect(0,0,s,s);
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++){ g.fillStyle = Math.random() < lit ? '#FFE7A3' : '#2E3A47'; g.fillRect(c*64 + 14, r*32 + 10, 36, 18); }
+    g.fillStyle = 'rgba(0,0,0,.25)'; for (let r = 0; r < 8; r++) g.fillRect(0, r*32 + 30, s, 2);
+  });
+  const facades = [cityWindows('#8C7A6A', .35), cityWindows('#C9C2B5', .3), cityWindows('#4A5566', .45), cityWindows('#A65E40', .3)];
+  const awningColors = [0xB8332C, 0x2F6FB0, 0x3FA35F, 0xF2A93B];
+  const shopGlass = new THREE.MeshStandardMaterial({color:0x6FB7D6, roughness:.1, metalness:.4, transparent:true, opacity:.7});
+
+  // ruas, calçadas e meios-fios
+  road(240, 14, 0, 25); walk(240, 4, 0, 16); walk(240, 4, 0, 34);
+  B(240, .12, .2, MAT.stone, 0, 0, 18.1, scene, false); B(240, .12, .2, MAT.stone, 0, 0, 31.9, scene, false);
+  road(12, 84, -36, 78); road(12, 84, 50, 78);
+  walk(2, 84, -43, 78); walk(2, 84, -29, 78); walk(2, 84, 43, 78); walk(2, 84, 57, 78);
+  road(240, 12, 0, 58); road(240, 12, 0, 86);
+
+  // 16 prédios em três fileiras; a fileira mais próxima tem vitrines voltadas para a avenida
+  const rows = [44, 72, 100], cols = [-78, -58, -20, 14, 36, 68];
+  let n = 0;
+  for (const z of rows) for (const x of cols){
+    if (n >= 16) break;
+    const w = 12 + rnd()*4, d = 14 + rnd()*2, h = 12 + Math.floor(rnd()*7)*5, tex0 = facades[Math.floor(rnd()*facades.length)];
+    const mat = new THREE.MeshStandardMaterial({map:rep(tex0, Math.max(1, Math.round(w/4)), Math.max(1, Math.round(h/6))), roughness:.85});
+    deco(B(w, h, d, mat, x, 0, z, scene, false));
+    deco(B(w*.8, 1.4, d*.6, MAT.steelDark, x, h, z, scene, false));
+    if (n % 3 === 0) deco(CY(1.2, 1.2, 3, MAT.trunk, x + w*.2, h + 1.4, z, scene, 12));
+    if (z === rows[0]){
+      const fz = z - d/2 + .05;
+      deco(B(w - 1, 3, .12, shopGlass, x, 0, fz));
+      deco(B(w - .6, .5, .9, new THREE.MeshStandardMaterial({color:awningColors[n % 4], roughness:.8}), x, 3.1, fz - .35));
+    }
+    n++;
+  }
+
+  // postes de luz (lanternas emissivas, sem luz pontual) e semáforos com ciclo vermelho/verde/amarelo
+  const lampMat = new THREE.MeshBasicMaterial({color:0xFFE2A8});
+  for (let x = -102.5; x <= 110; x += 15) for (const z of [17.2, 32.8]){
+    deco(new THREE.Mesh(new THREE.CylinderGeometry(.06, .08, 4.6, 8), MAT.steelDark)).position.set(x, 2.3, z);
+    deco(new THREE.Mesh(new THREE.SphereGeometry(.2, 8, 6), lampMat)).position.set(x, 4.8, z);
+  }
+  const lights = [];
+  for (const x of [-30, 44]){
+    deco(new THREE.Mesh(new THREE.CylinderGeometry(.07, .08, 5, 8), MAT.steelDark)).position.set(x, 2.5, 17.3);
+    deco(B(.4, 1.1, .3, MAT.black, x, 3.6, 17.3));
+    lights.push([0xE23B2E, 0xF2B630, 0x3FD17B].map((c, i) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(.1, 10, 8), new THREE.MeshBasicMaterial({color:c}));
+      m.position.set(x, 3.9 - i*.35, 17.1); deco(m);
+      return {m, on:new THREE.Color(c), off:new THREE.Color(c).multiplyScalar(.2)};
+    }));
+  }
+  ANIM.push((dt, t) => {
+    const ph = t % 12, lit = ph < 6 ? 0 : ph < 11 ? 2 : 1;   // 0 vermelho, 2 verde, 1 amarelo
+    lights.forEach(L => L.forEach((l, i) => l.m.material.color.copy(i === lit ? l.on : l.off)));
+  });
+
+  // árvores em calçada
+  for (let x = -100; x <= 100; x += 20) for (const z of [15.4, 34.6]){
+    deco(new THREE.Mesh(new THREE.CylinderGeometry(.12, .15, 2.2, 8), MAT.trunk)).position.set(x, 1.2, z);
+    deco(new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), MAT.hedge)).position.set(x, 3, z);
+  }
+
+  // carros: 3 no sentido leste (z 21.5) e 3 no oeste (z 28.5), dando a volta nas bordas
+  const CARS = [];
+  const carColors = [0xF2B630, 0x1F3A5F, 0xB8332C, 0xEFEFEF, 0xF2B630, 0x1F3A5F];
+  carColors.forEach((c, i) => {
+    const g = new THREE.Group(); scene.add(g);
+    B(1.9, .6, 4.2, new THREE.MeshStandardMaterial({color:c, roughness:.35, metalness:.4}), 0, .28, 0, g, false);
+    B(1.6, .5, 2.2, new THREE.MeshStandardMaterial({color:0x1A2633, roughness:.2, metalness:.5}), 0, .88, -.1, g, false);
+    const wheels = [];
+    for (const [wx, wz] of [[-.95,-1.3],[.95,-1.3],[-.95,1.3],[.95,1.3]]){
+      const holder = new THREE.Group(); holder.position.set(wx, .32, wz); holder.rotation.z = Math.PI/2; g.add(holder);
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(.32, .32, .22, 10), M(0x1A1A1A, {roughness:.9})); holder.add(w); wheels.push(w);
+    }
+    B(.3, .12, .05, new THREE.MeshBasicMaterial({color:0xFFF4D0}), -.5, .5, 2.12, g, false);
+    B(.3, .12, .05, new THREE.MeshBasicMaterial({color:0xFFF4D0}), .5, .5, 2.12, g, false);
+    B(.3, .12, .05, new THREE.MeshBasicMaterial({color:0xE23B2E}), -.6, .5, -2.12, g, false);
+    B(.3, .12, .05, new THREE.MeshBasicMaterial({color:0xE23B2E}), .6, .5, -2.12, g, false);
+    const dir = i % 2 ? -1 : 1;
+    g.rotation.y = dir > 0 ? Math.PI/2 : -Math.PI/2;
+    CARS.push({g, wheels, dir, laneZ: dir > 0 ? 21.5 : 28.5, x: -110 + (i/carColors.length)*220, v: 8 + Math.random()*5});
+  });
+  ANIM.push((dt) => {
+    if (RM.matches) { CARS.forEach(c => c.g.position.set(c.x, 0, c.laneZ)); return; }
+    CARS.forEach(c => {
+      c.x += c.dir*c.v*dt; if (c.x > 110) c.x -= 220; if (c.x < -110) c.x += 220;
+      c.g.position.set(c.x, 0, c.laneZ);
+      c.wheels.forEach(w => w.rotation.y += c.dir*c.v*dt/.32);
+    });
+  });
+}
+buildCity();
+
 class World3D {
   /* Ruína: paredes desbotadas. Etapas seguintes: paredes limpas. Iluminação fica com as melhorias */
   applyStage(index){
