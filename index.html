@@ -512,6 +512,10 @@ const stageIndex = () => STAGES.filter(s => starsNow() >= s.min).length - 1;
 const stageName = () => STAGES[stageIndex()].name;
 /* Trava de reforma: texto com o que falta, ou null se o quarto pode ser comprado/evoluído agora */
 function gateOf(room){
+  if (room.upper){ // suíte do 2º andar: exige as estrelas da própria suíte, só até a compra
+    if (room.owned) return null;
+    return starsNow() >= room.stars ? null : `precisa de ${room.stars} estrelas`;
+  }
   const target = room.owned ? room.level + 1 : 1;
   if (target > 3) return null;
   const need = STARS_FOR_LEVEL[target];
@@ -799,8 +803,8 @@ function toggleDoor(room, force){
   d.open = open; d.target = open ? (room.side < 0 ? 1.55 : -1.55) : 0;
   if (force === undefined) SFX.door();
 }
-function signVisible(room){ return !room.owned || (room.level < 3 && room.state === 'free' && !room.guest); }
-function signCost(room){ return PRICE[room.owned ? room.level + 1 : 1]; }
+function signVisible(room){ if (room.upper) return !room.owned; return !room.owned || (room.level < 3 && room.state === 'free' && !room.guest); }
+function signCost(room){ return room.upper ? room.price : PRICE[room.owned ? room.level + 1 : 1]; }
 function signLabel(room){
   const c = signCost(room), block = gateOf(room) || (G.money >= c ? '' : 'caixa insuficiente');
   const head = room.owned ? `[E] Evoluir ${room.id} para ${LEVEL[room.level + 1]} · ${fmt(c)}` : `[E] Comprar quarto ${room.id} · ${fmt(c)}`;
@@ -812,10 +816,11 @@ function drawSign(room){
   g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = '#D8A64A';
   g.font = '600 30px Outfit, sans-serif'; g.fillText(room.owned ? 'UPGRADE DO QUARTO ' + room.id : 'QUARTO ' + room.id + ' À VENDA', w/2, 58);
   g.fillStyle = '#F6EFE3'; g.font = '60px Gloock, Georgia, serif'; g.fillText(room.owned ? LEVEL[room.level + 1] : 'Comprar', w/2, 128);
-  g.fillStyle = '#7FD8C8'; g.font = '700 44px Outfit, sans-serif'; g.fillText(fmt(c) + '  ·  diária ' + fmt(RATE[room.owned ? room.level + 1 : 1]), w/2, 196);
+  g.fillStyle = '#7FD8C8'; g.font = '700 44px Outfit, sans-serif'; g.fillText(fmt(c) + '  ·  diária ' + fmt(RATE[room.owned ? room.level + 1 : (room.buyLevel || 1)]), w/2, 196);
   room.signTex.needsUpdate = true;
 }
 function upgradeRoom(room){
+  if (room.upper) return buySuite(room);
   const c = signCost(room);
   const gate = gateOf(room);
   if (gate){ SFX.error(); toast(`Obra bloqueada · ${gate}`, 'bad'); return; }
@@ -1251,7 +1256,7 @@ const NODES = {
   CW:[-9.6,0], CA:[-12.5,0], CB:[-21.5,0], R101:[-12.5,-5], R102:[-12.5,5], R103:[-21.5,-5], R104:[-21.5,5],
   DW:[9.5,0], DM:[9.8,6.4], KD:[19,6.4], KI:[22,6.2], ST:[26.1,-1.5],
   /* 2º andar: o terceiro valor é o andar do nó (0 térreo, 1 superior). SB/SU são o pé e o topo da escada */
-  SB:[1.6,4.75,0], SU:[7.6,4.75,1], UH:[6.6,2.5,1], UC:[0,2.5,1], UW:[-5.8,2.5,1],
+  SB:[0.9,4.75,0], SU:[7.1,4.75,1], UH:[6.6,2.5,1], UC:[0,2.5,1], UW:[-5.8,2.5,1],
   D201:[-5.8,-.4,1], U201:[-7.2,-2.5,1], D202:[-1.4,-.4,1], U202:[-2.6,-2.5,1], D203:[4.4,-.4,1], U203:[1.8,-2.6,1],
 };
 const EDGES = [['OUT','ENT'],['ENT','LS'],['LS','LC'],['LC','LW'],['LC','LE'],['LE','LN'],['LN','PT'],['PT','DK'],
@@ -2269,7 +2274,7 @@ function renderPC(){
   $('pcBody').innerHTML = view();
   $('pcBody').querySelectorAll('[data-hire]').forEach(b => b.onclick = () => hire(b.dataset.hire));
   $('pcBody').querySelectorAll('[data-evolve]').forEach(b => b.onclick = () => evolve(b.dataset.evolve));
-  $('pcBody').querySelectorAll('[data-room]').forEach(b => b.onclick = () => { upgradeRoom(ROOMS.find(r => r.id === b.dataset.room)); renderPC(); });
+  $('pcBody').querySelectorAll('[data-room]').forEach(b => b.onclick = () => { upgradeRoom(allRooms().find(r => r.id === b.dataset.room)); renderPC(); });
   $('pcBody').querySelectorAll('[data-upg]').forEach(b => b.onclick = () => buyUpgrade(b.dataset.upg));
   $('pcBody').querySelectorAll('[data-branch]').forEach(b => b.onclick = () => buyBranch(b.dataset.branch));
   $('pcBody').querySelectorAll('[data-partner]').forEach(b => b.onclick = () => buyPartner(b.dataset.partner));
@@ -2299,16 +2304,18 @@ function staffView(){
   }).join('') + '</div>';
 }
 function upgView(){
-  const rooms = ROOMS.map(room => {
+  const rooms = allRooms().map(room => {
     const gate = gateOf(room); let btn, note;
-    if (!room.owned){ note = 'Em obras'; btn = `<button data-room="${room.id}" ${G.money < PRICE[1] || gate ? 'disabled' : ''}>Comprar · ${fmt(PRICE[1])}</button>`; }
+    const buyPrice = room.upper ? room.price : PRICE[1];
+    if (room.upper && room.owned){ note = `${LEVEL[room.level]} · liberada`; btn = '<button disabled>Suíte liberada</button>'; }
+    else if (!room.owned){ note = room.upper ? 'À venda' : 'Em obras'; btn = `<button data-room="${room.id}" ${G.money < buyPrice || gate ? 'disabled' : ''}>Comprar · ${fmt(buyPrice)}</button>`; }
     else if (room.level >= 3){ note = LEVEL[3]; btn = '<button disabled>Nível máximo</button>'; }
     else {
       const busy = room.guest || room.state !== 'free', c = PRICE[room.level + 1];
       note = LEVEL[room.level] + (busy ? (room.guest ? ' · ocupado agora' : ' · precisa de limpeza antes da obra') : '');
       btn = `<button data-room="${room.id}" ${busy || gate || G.money < c ? 'disabled' : ''}>Evoluir para ${LEVEL[room.level + 1]} · ${fmt(c)}</button>`;
     }
-    return `<div class="role"><h3>Quarto ${room.id}</h3><p>${note}${gate ? ' · ' + gate : ''} · diária ${fmt(RATE[Math.max(1, room.level)])}</p><div class="btns">${btn}</div></div>`;
+    return `<div class="role"><h3>Quarto ${room.id}${room.upper ? ' (2º andar)' : ''}</h3><p>${note}${gate ? ' · ' + gate : ''} · diária ${fmt(RATE[Math.max(1, room.level)])}</p><div class="btns">${btn}</div></div>`;
   }).join('');
   const hotel = Object.entries(UPGRADES).map(([k,u]) => `<div class="role"><h3>${u.name}</h3><p>${u.desc}</p><div class="btns">${G.upg[k] ? '<button disabled>Concluído</button>' : `<button data-upg="${k}" ${G.money < u.cost ? 'disabled' : ''}>Comprar · ${fmt(u.cost)}</button>`}</div></div>`).join('');
   return `<p class="sub">Quartos · etapas de reforma</p><div class="staff">${rooms}</div><p class="sub" style="margin-top:16px">Hotel</p><div class="staff">${hotel}</div>`;
@@ -2630,7 +2637,7 @@ function buildFacade(stage){
    Suítes do 2º andar entram por etapa (201/202 em Modernização, 203 em Alto Padrão) e recebem sujeira e crises.
    ============================================================ */
 const UP_Y = 5.2, ROOF_Y = 8.4;
-const STAIR = {x1:1.9, x2:7.7, z1:4.05, z2:5.45};   // escada recuada da parede sul (folga de 0,35 m): sobe de x1 (térreo) até x2 (2º andar)
+const STAIR = {x1:1.2, x2:6.5, z1:4.05, z2:5.45};   // escada recuada da parede sul (folga de 0,35 m): sobe de x1 (térreo) até x2 (2º andar)
 let PLAYER_LEVEL = 0;
 /* Altura do piso dentro da escada (0 embaixo, UP_Y em cima); null fora dela */
 function stairH(x, z){
@@ -2730,9 +2737,9 @@ BUILD_FLOOR = 1;
 /* Suítes do 2º andar: 201 e 202 Executivas, 203 Presidencial. Cada suíte tem uma parte aberta (mobília e varanda)
    e uma parte fechada (parede que tapa o vão da porta-janela). syncUpper troca as duas conforme a etapa. */
 const ROOM_UP = [
-  {id:'201', cx:-5.8, level:2, stage:2, door:-5.8, leak:{x:1.2, z:-4.9}, pipe:{x:-1.6, z:-4.4}},
-  {id:'202', cx:-1.4, level:2, stage:2, door:-1.4, leak:{x:1.2, z:-4.9}, pipe:{x:-1.6, z:-4.4}},
-  {id:'203', cx:4.4,  level:3, stage:3, door:4.4,  leak:{x:-2.2, z:-4.6}, pipe:{x:-1.6, z:-4.4}},
+  {id:'201', cx:-5.8, level:2, price:2500,  stars:4, door:-5.8, leak:{x:1.2, z:-4.9}, pipe:{x:-1.6, z:-4.4}},
+  {id:'202', cx:-1.4, level:2, price:2500,  stars:4, door:-1.4, leak:{x:1.2, z:-4.9}, pipe:{x:-1.6, z:-4.4}},
+  {id:'203', cx:4.4,  level:3, price:10000, stars:7, door:4.4,  leak:{x:-2.2, z:-4.6}, pipe:{x:-1.6, z:-4.4}},
 ];
 /* Corredor: passadeira vermelha e luzes de teto extras */
 floor(-7.4, 1.2, 7.4, 3.8, M(0xFFFFFF,{map:rep(TEX.corridor, 6, 1), roughness:.9}), UP_Y + .025);
@@ -2748,11 +2755,11 @@ for (const d of ROOM_UP){
   const pivot = new THREE.Group(); pivot.position.set(d.door - .95, UP_Y, -.8); pivot.rotation.y = -Math.PI/2; scene.add(pivot);
   B(1.9,2.3,.06, MAT.woodDark, .95, 0, 0, pivot);
   SPH(.035, MAT.gold, 1.75, 1.05, .05, pivot, 10);
-  const door = {pivot, open:true, want:-Math.PI/2, solid:solid(d.door - .95, -.86, d.door + .95, -.74)};
-  door.solid.on = false;
-  interact(pivot, {label:() => `[E] ${door.open ? 'Fechar' : 'Abrir'} porta da suíte ${d.id}`, ok:() => true, action:() => {
-    door.open = !door.open; door.want = door.open ? -Math.PI/2 : 0; door.solid.on = !door.open;
-  }});
+  const door = {pivot, open:false, want:0, solid:solid(d.door - .95, -.86, d.door + .95, -.74)};
+  door.solid.on = true;   // começa trancada: refreshUpper() abre quando a suíte é comprada
+  const room = () => UPPER.find(r => r.id === d.id);
+  interact(pivot, {label:() => !room().owned ? `Suíte ${d.id} · trancada (compre pela placa)` : `[E] ${door.open ? 'Fechar' : 'Abrir'} porta da suíte ${d.id}`,
+    ok:() => room().owned, action:() => toggleDoor(room())});
   UP_DOORS.push(door);
 }
 ANIM.push((dt) => UP_DOORS.forEach(d => { d.pivot.rotation.y += (d.want - d.pivot.rotation.y) * Math.min(1, dt*6); }));
@@ -2808,17 +2815,41 @@ BUILD_FLOOR = 0;
 /* Suítes superiores como alvos de sujeira e crise (sem hóspedes, que caminham pelo térreo) */
 const UPPER = ROOM_UP.map(d => {
   const group = new THREE.Group(); group.position.set(d.cx, UP_Y, -.8); scene.add(group); group.updateMatrixWorld(true);
-  return {id:d.id, group, dirt:[], state:'free', guest:null, level:d.level, stage:d.stage, owned:false, upper:true, leak:d.leak, pipe:d.pipe, parts:SUITE_PARTS[d.id]};
+  return {id:d.id, group, dirt:[], state:'free', guest:null, level:0, buyLevel:d.level, price:d.price, stars:d.stars, door:d.door, owned:false, upper:true, leak:d.leak, pipe:d.pipe, parts:SUITE_PARTS[d.id]};
 });
-/* Liberação pela etapa de reforma: a cada nova etapa, as suítes liberadas entram na manutenção e abrem a varanda */
-function syncUpper(index){
-  UPPER.forEach(r => {
-    const ok = index >= r.stage;
-    if (ok && !r.owned) toast(`Suíte ${r.id} do 2º andar liberada para manutenção e limpeza`, 'good');
-    r.owned = ok;
-    r.parts.open.visible = ok; r.parts.closed.visible = !ok;
-    r.parts.openSolids.forEach(s => s.on = ok); r.parts.closedSolids.forEach(s => s.on = !ok);
+UPPER.forEach(makeUpperSign);
+refreshUpper();
+/* Aplica o estado de compra: suíte comprada aparece mobiliada, com porta aberta; sem compra, fica trancada e fechada */
+function refreshUpper(){
+  UPPER.forEach((r, i) => {
+    const p = r.parts, u = UP_DOORS[i];
+    p.open.visible = r.owned; p.closed.visible = !r.owned;
+    p.openSolids.forEach(s => s.on = r.owned); p.closedSolids.forEach(s => s.on = !r.owned);
+    u.open = r.owned; u.want = r.owned ? -Math.PI/2 : 0; u.solid.on = !r.owned;
   });
+}
+/* Placa de venda junto à porta da suíte, no corredor (mesmo padrão das placas do térreo) */
+function makeUpperSign(room){
+  const sc = document.createElement('canvas'); sc.width = 512; sc.height = 256;
+  const st = new THREE.CanvasTexture(sc); st.encoding = THREE.sRGBEncoding;
+  const sm = new THREE.MeshBasicMaterial({map:st});
+  room.sign = new THREE.Mesh(new THREE.BoxGeometry(1.5,.75,.04), [MAT.gold, MAT.gold, MAT.gold, MAT.gold, sm, sm]);
+  room.sign.position.set(room.door + 1.2, UP_Y + 1.6, -.5); scene.add(room.sign);
+  room.signCanvas = sc; room.signTex = st;
+  interact(room.sign, {label:() => signLabel(room), ok:() => !gateOf(room) && G.money >= signCost(room), action:() => upgradeRoom(room)});
+  ANIM.push((dt, t) => {
+    room.sign.visible = signVisible(room);
+    if (room.sign.visible){ room.sign.rotation.y = Math.sin(t*.9)*.45; room.sign.position.y = UP_Y + 1.6 + Math.sin(t*1.6)*.06; }
+  });
+}
+/* Compra de suíte do 2º andar: exige estrelas e o preço em caixa */
+function buySuite(room){
+  const gate = gateOf(room);
+  if (gate){ SFX.error(); toast(`Suíte ${room.id} bloqueada · ${gate}`, 'bad'); return; }
+  if (G.money < room.price){ SFX.error(); toast(`Faltam ${fmt(room.price - G.money)} para a suíte ${room.id}`, 'bad'); return; }
+  addMoney(-room.price, `Compra da suíte ${room.id}`);
+  room.owned = true; room.level = room.buyLevel; refreshUpper(); SFX.buy(); addRep(3);
+  toast(`Suíte ${room.id} comprada · ${LEVEL[room.level]} pronta para hóspedes e limpeza`, 'good');
 }
 
 
@@ -2829,7 +2860,7 @@ class World3D {
     MAT.wall.color.setHex(ruin ? 0xA9A59C : 0xF1E9DC);
     MAT.wallWarm.color.setHex(ruin ? 0x9C968C : 0xE9D6B8);
     buildFacade(index);
-    syncUpper(index);
+    refreshUpper();
   }
   applyBranch(b){ scene.fog.color.setHex(b.fog); sun.color.setHex(b.sun); }
 }
@@ -2860,7 +2891,7 @@ class SaveSystem {
   snapshot(){
     return {v:this.version, money:G.money, rep:G.rep, day:G.day, t:G.t, elapsed:G.elapsed, incomeToday:G.incomeToday, expenseToday:G.expenseToday,
             served:G.served, friend:G.friend, guestSeq, upg:G.upg, staff:G.staff, staffLv:G.staffLv, branch:G.branch, owned:G.owned,
-            plus:G.plus, partners:G.partners, rooms:ROOMS.map(r => ({owned:r.owned, level:r.level})), log:G.log.slice(0, 40)};
+            plus:G.plus, partners:G.partners, rooms:ROOMS.map(r => ({owned:r.owned, level:r.level})), upper:UPPER.map(r => ({owned:r.owned, level:r.level})), log:G.log.slice(0, 40)};
   }
   save(){ try { localStorage.setItem(this.key, JSON.stringify(this.snapshot())); } catch(e){ /* sem armazenamento: o jogo segue sem salvar */ } }
   read(){ try { const d = JSON.parse(localStorage.getItem(this.key)); return d && d.v === this.version ? d : null; } catch(e){ return null; } }
@@ -2876,6 +2907,8 @@ class SaveSystem {
       G.staffLv = Object.assign({recep:1, maid:1}, d.staffLv);
       for (const k of Object.keys(G.upg)) if (G.upg[k]) applyUpgrade(k);   // antes das salas: buildRoom usa G.upg.light
       ROOMS.forEach((r, i) => { const s = d.rooms && d.rooms[i]; if (s){ r.owned = s.owned; r.level = s.level; buildRoom(r); } });
+      UPPER.forEach((r, i) => { const s = d.upper && d.upper[i]; if (s){ r.owned = !!s.owned; r.level = s.owned ? (s.level || r.buyLevel) : 0; } });
+      refreshUpper();
       for (const role of Object.keys(ROLES)) for (let i = 0; i < Math.min((d.staff && d.staff[role]) || 0, ROLES[role].max); i++){ G.staff[role]++; spawnStaff(role, i); }
       const branch = BRANCHES.find(b => b.id === G.branch); if (branch) WORLD.applyBranch(branch);
       return true;
