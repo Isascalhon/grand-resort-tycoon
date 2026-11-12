@@ -786,6 +786,14 @@ function roomTag(room){
   return [`${room.id} · ${LEVEL[room.level]} · Livre`, 'rgba(43,179,177,.95)', '#10302F'];
 }
 function toggleDoor(room, force){
+  if (room.upper){ // porta de madeira do 2º andar: folha com dobradiça em UP_DOORS (mesma ordem de UPPER)
+    const u = UP_DOORS[UPPER.indexOf(room)]; if (!u) return;
+    const open = force === undefined ? !u.open : force;
+    if (u.open === open) return;
+    u.open = open; u.want = open ? -Math.PI/2 : 0; u.solid.on = !open;
+    if (force === undefined) SFX.door();
+    return;
+  }
   const d = room.door, open = force === undefined ? !d.open : force;
   if (d.open === open) return;
   d.open = open; d.target = open ? (room.side < 0 ? 1.55 : -1.55) : 0;
@@ -1242,10 +1250,15 @@ const NODES = {
   OUT:[0,12.8], ENT:[0,8], LS:[0,4.5], LC:[0,2.6], LW:[-6,0], LE:[6.5,.4], LN:[5.75,-4.4], PT:[5.75,-8.6], DK:[5.75,-10.6],
   CW:[-9.6,0], CA:[-12.5,0], CB:[-21.5,0], R101:[-12.5,-5], R102:[-12.5,5], R103:[-21.5,-5], R104:[-21.5,5],
   DW:[9.5,0], DM:[9.8,6.4], KD:[19,6.4], KI:[22,6.2], ST:[26.1,-1.5],
+  /* 2º andar: o terceiro valor é o andar do nó (0 térreo, 1 superior). SB/SU são o pé e o topo da escada */
+  SB:[1.6,5.1,0], SU:[7.6,5.1,1], UH:[6.6,2.5,1], UC:[0,2.5,1], UW:[-5.8,2.5,1],
+  D201:[-5.8,-.4,1], U201:[-7.2,-2.5,1], D202:[-1.4,-.4,1], U202:[-2.6,-2.5,1], D203:[4.4,-.4,1], U203:[1.8,-2.6,1],
 };
 const EDGES = [['OUT','ENT'],['ENT','LS'],['LS','LC'],['LC','LW'],['LC','LE'],['LE','LN'],['LN','PT'],['PT','DK'],
   ['LW','CW'],['CW','CA'],['CA','CB'],['CA','R101'],['CA','R102'],['CB','R103'],['CB','R104'],
-  ['LE','DW'],['DW','DM'],['DM','KD'],['KD','KI'],['KI','ST']];
+  ['LE','DW'],['DW','DM'],['DM','KD'],['KD','KI'],['KI','ST'],
+  ['LS','SB'],['SB','SU'],['SU','UH'],['UH','UC'],['UC','UW'],['UW','D201'],['UC','D202'],['UC','D203'],
+  ['D201','U201'],['D202','U202'],['D203','U203']];
 const ADJ = {}; EDGES.forEach(([a,b]) => { (ADJ[a] = ADJ[a] || []).push(b); (ADJ[b] = ADJ[b] || []).push(a); });
 function bfs(a, b){
   const prev = {[a]:null}, q = [a];
@@ -1314,7 +1327,10 @@ function stepNPC(n, dt){
   if (n.onTimer){ n.timer -= dt; if (n.timer <= 0){ const f = n.onTimer; n.onTimer = null; f(); } }
   if (n.path.length){
     const [tx,tz] = n.path[0], p = n.g.position, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
-    if (d < .06){ n.path.shift(); if (!n.path.length && n.onArrive){ const f = n.onArrive; n.onArrive = null; f(); } }
+    if (d < .06){
+      if (n.path[0][2] !== undefined) n.level = n.path[0][2];
+      n.path.shift(); if (!n.path.length && n.onArrive){ const f = n.onArrive; n.onArrive = null; f(); }
+    }
     else {
       const s = Math.min(d, n.speed*dt); p.x += dx/d*s; p.z += dz/d*s;
       const ty = Math.atan2(dx, dz); let dy = ty - n.g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); n.g.rotation.y += dy*Math.min(1, dt*10);
@@ -1322,6 +1338,8 @@ function stepNPC(n, dt){
       const sw = Math.sin(n.phase)*.55; n.legs[0].rotation.x = sw; n.legs[1].rotation.x = -sw; n.arms[0].rotation.x = -sw*.8; n.arms[1].rotation.x = sw*.8;
       n.body.position.y = Math.abs(Math.cos(n.phase))*.04;
     }
+    // altura: dentro da escada segue a rampa; fora dela, o andar do nó atual (já atualizado acima, sem salto de um quadro)
+    const sh = stairH(p.x, p.z); p.y = sh !== null ? sh : (n.level ? UP_Y : 0);
   } else if (n.pose === 'stand'){
     n.legs.forEach(l => l.rotation.x *= .85); n.body.position.y = 0;
     n.arms.forEach(a => a.rotation.x *= .85);
@@ -1350,7 +1368,10 @@ function reviewOf(p, room){
   if (RATE[room.level] > p.budget) return {q:'acima', pay:Math.round(total*.8), rep:0, txt:'Acima do orçamento'};
   return {q:'perfeito', pay:total, rep:2, txt:'Encaixe perfeito'};
 }
-const roomsForGuest = () => ROOMS.filter(r => r.owned && !r.guest);
+/* Todos os quartos: térreo (ROOMS) e 2º andar (UPPER). Nó de rota: 'R101' no térreo, 'U201' no andar de cima */
+const allRooms = () => ROOMS.concat(UPPER);
+const roomNode = r => r.upper ? 'U' + r.id : 'R' + r.id;
+const roomsForGuest = () => allRooms().filter(r => r.owned && !r.guest);
 function bestRoomFor(p){
   const rank = {perfeito:2, acima:1, ruim:0};
   return roomsForGuest().map(r => ({r, v:reviewOf(p, r)}))
@@ -1382,7 +1403,7 @@ function checkIn(n, room, byStaff){
   toast(`${byStaff ? 'Recepção: ' : ''}${n.profile.name} no quarto ${room.id} · ${rv.txt} · ${rv.pay >= 0 ? '+' : '−'}${fmt(Math.abs(rv.pay))}`, rv.rep >= 0 ? 'good' : 'bad');
   if (!byStaff) SFX.coin();
   toggleDoor(room, true);
-  route(n, 'R' + room.id, [], () => { n.state = 'room'; toggleDoor(room, false); wait(n, 22, () => leaveRoom(n)); });
+  route(n, roomNode(room), [], () => { n.state = 'room'; toggleDoor(room, false); wait(n, 22, () => leaveRoom(n)); });
   return true;
 }
 /* Recepcionista: atende o primeiro da fila, mas só em um quarto que não seja encaixe ruim */
@@ -1499,8 +1520,8 @@ function staffTick(n, dt){
   if (n.role === 'maid'){
     if (n.state === 'idle'){
       n.cool = (n.cool || 0) - dt;
-      const room = n.cool <= 0 && ROOMS.find(r => r.state === 'dirty' && !r.maid && r.level <= G.staffLv.maid);
-      if (room){ room.maid = n; n.room = room; n.state = 'going'; toggleDoor(room, true); n.tag.userData.set(`Limpando ${room.id}`, 'rgba(43,179,177,.95)', '#10302F'); route(n, 'R' + room.id, [], () => { n.state = 'cleaning'; n.work = 0; }); }
+      const room = n.cool <= 0 && allRooms().find(r => r.owned && r.state === 'dirty' && !r.maid && r.level <= G.staffLv.maid);
+      if (room){ room.maid = n; n.room = room; n.state = 'going'; toggleDoor(room, true); n.tag.userData.set(`Limpando ${room.id}`, 'rgba(43,179,177,.95)', '#10302F'); route(n, roomNode(room), [], () => { n.state = 'cleaning'; n.work = 0; }); }
     } else if (n.state === 'cleaning'){
       n.work += dt; if (!RM.matches) n.arms[1].rotation.x = -1 + Math.sin(T*10)*.5;
       if (n.work > 2.5){
@@ -1691,7 +1712,7 @@ function zoneAt(x, z){
   if (z < -8 && x > -1 && x < 23 && z > -27) return 'Piscina e Pool Bar';
   return 'Jardim do resort';
 }
-const occupancy = () => { const owned = ROOMS.filter(r => r.owned); return owned.length ? Math.round(owned.filter(r => r.guest).length/owned.length*100) : 0; };
+const occupancy = () => { const owned = allRooms().filter(r => r.owned); return owned.length ? Math.round(owned.filter(r => r.guest).length/owned.length*100) : 0; };
 let hudT = 0, lastStage = -1;
 function hud(dt){
   hudT -= dt; if (hudT > 0) return; hudT = .15;
@@ -2347,7 +2368,7 @@ function renderFicha(){
   const p = n.profile, rooms = roomsForGuest();
   const cards = rooms.length ? rooms.map(r => {
     const rv = reviewOf(p, r), tone = rv.q === 'perfeito' ? 'text-lagoon' : rv.q === 'acima' ? 'text-brass' : 'text-coral';
-    return `<div class="role"><h3>Quarto ${r.id} · ${LEVEL[r.level]} · ${ROOM_STARS[r.level]}★</h3>
+    return `<div class="role"><h3>Quarto ${r.id}${r.upper ? ' (2º andar)' : ''} · ${LEVEL[r.level]} · ${ROOM_STARS[r.level]}★</h3>
       <p class="${tone}">${rv.txt} · ${rv.pay >= 0 ? '+' : '−'}${fmt(Math.abs(rv.pay))} por ${p.nights} noite${p.nights > 1 ? 's' : ''}${rv.rep ? ` · reputação ${rv.rep > 0 ? '+' : ''}${(rv.rep/10).toFixed(1).replace('.', ',')}★` : ''}</p>
       <div class="btns"><button data-assign="${r.id}">${r.state === 'dirty' ? 'Check-in no quarto sujo' : 'Fazer check-in'}</button></div></div>`;
   }).join('') : '<p class="say">Nenhum quarto comprado está disponível agora. Compre ou limpe um quarto.</p>';
@@ -2360,7 +2381,7 @@ function renderFicha(){
     <p class="sub">Fila · posição ${G.queue.indexOf(n) + 1}</p>
     <div class="staff">${cards}</div>`;
   $('fichaBody').querySelectorAll('[data-assign]').forEach(b => b.onclick = () => {
-    if (checkIn(n, ROOMS.find(r => r.id === b.dataset.assign), false)) closePC(false);
+    if (checkIn(n, allRooms().find(r => r.id === b.dataset.assign), false)) closePC(false);
   });
 }
 
