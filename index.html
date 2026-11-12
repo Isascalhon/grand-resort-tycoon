@@ -1,11 +1,21 @@
-<title>Grand Resort 3D</title>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="claude:viewport-fit-sides" content="cover">
+<title>Grand Resort Tycoon 3D</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gloock&family=Outfit:wght@400;500;600;700&display=swap">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {theme:{extend:{colors:{walnut:'#2A1B14','walnut-2':'#3B271C',brass:'#D8A64A',linen:'#F6EFE3',lagoon:'#2BB3B1',coral:'#E86A5A'},fontFamily:{display:['Gloock','Georgia','serif'],body:['Outfit','Segoe UI','sans-serif']}}}};
+</script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Reflector.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <style>
 /* Layout: o mundo 3D ocupa a tela; HUD de nogueira e latão nos cantos, mira no centro, painel do computador como janela modal. */
 :root{
@@ -21,6 +31,7 @@
   color-scheme: dark;
 }
 html,body{height:100%;overflow:hidden}
+[hidden]{display:none !important} /* .overlay usa display:grid e sem isso sobrepunha os painéis ocultos */
 body{background:var(--walnut);color:var(--linen);font-family:var(--font-body);user-select:none}
 #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
 .panel{background:color-mix(in srgb,var(--walnut) 86%,transparent);border:1px solid color-mix(in srgb,var(--brass) 45%,transparent);border-radius:14px;box-shadow:0 8px 24px rgba(10,5,2,.35);backdrop-filter:blur(6px)}
@@ -28,7 +39,7 @@ body{background:var(--walnut);color:var(--linen);font-family:var(--font-body);us
 .crosshair::before,.crosshair::after{content:"";position:absolute;background:var(--ch);box-shadow:0 0 3px rgba(0,0,0,.85);border-radius:1px}
 .crosshair::before{left:10px;top:1px;width:2px;height:20px}
 .crosshair::after{top:10px;left:1px;height:2px;width:20px}
-.crosshair.hot{--ch:#FFD25A;transform:translate(-50%,-50%) scale(1.2)}
+.crosshair.hot{--ch:#FFD700;transform:translate(-50%,-50%) scale(1.2)}
 .prompt{position:fixed;left:50%;top:calc(50% + 24px);transform:translateX(-50%);padding:6px 12px;border-radius:10px;background:rgba(20,12,8,.78);font-size:14px;font-weight:600;white-space:nowrap;pointer-events:none;color:var(--linen)}
 .prompt.hot{color:#FFD25A}
 .prompt small{display:block;font-weight:400;font-size:12px;color:var(--linen-dim);text-align:center}
@@ -128,7 +139,16 @@ td.num{text-align:right} .pos{color:#7FD8C8} .neg{color:#F29A8E}
 @media (max-width:640px){ .help{display:none} .stats .money{font-size:24px} .start h1{font-size:30px} }
 @media (prefers-reduced-motion:reduce){ .toast{animation:none} .crosshair{transition:none} }
 </style>
-
+<style>
+.repair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%) translateY(120px);width:min(360px,calc(100vw - 32px));padding:12px 16px;display:flex;flex-direction:column;gap:8px;pointer-events:none;text-align:center}
+.repair small{color:var(--linen-dim);font-size:12.5px}
+.repair > small:first-child{color:var(--brass);font-weight:600;letter-spacing:.14em;text-transform:uppercase;font-size:11px}
+.repbar{position:relative;height:22px;border-radius:8px;overflow:hidden;background:var(--walnut-2)}
+.repbar span{position:absolute;top:0;bottom:0;background:rgba(43,179,177,.75);border-left:2px solid #DFF7F2;border-right:2px solid #DFF7F2}
+.repbar i{position:absolute;top:-2px;bottom:-2px;width:4px;margin-left:-2px;background:#FFFFFF;box-shadow:0 0 4px #000}
+</style>
+</head>
+<body>
 <canvas id="gl" aria-label="Resort em 3D, visão em primeira pessoa"></canvas>
 <div class="crosshair" id="ch"></div>
 <div class="prompt" id="prompt" hidden></div>
@@ -136,7 +156,10 @@ td.num{text-align:right} .pos{color:#7FD8C8} .neg{color:#F29A8E}
 <div class="hud">
   <dl class="panel stats">
     <div class="money"><small>Caixa do resort</small><span id="money">$1.500</span></div>
-    <dt>Reputação</dt><dd><span class="stars" id="rep">★★★☆☆</span></dd>
+    <dt>Receita / s</dt><dd id="income">$0 /s</dd>
+    <dt>Reputação</dt><dd><span class="stars" id="rep">☆☆☆☆☆☆☆☆☆☆</span> <span id="starsNum">0,0</span></dd>
+    <dt>Etapa</dt><dd id="stage">Ruína</dd>
+    <dt>Ocupação</dt><dd id="occ">0%</dd>
     <dt>Hóspedes</dt><dd id="guests">0</dd>
     <dt>Fila</dt><dd id="queue">0</dd>
     <dt>Relógio</dt><dd id="clock">Dia 1 · 08:00</dd>
@@ -153,11 +176,18 @@ td.num{text-align:right} .pos{color:#7FD8C8} .neg{color:#F29A8E}
 <div class="feed" id="feed" aria-live="polite"></div>
 <div class="panel help">Clique para jogar | <b>WASD</b>: Andar | <b>MOUSE</b>: Olhar | <b>E</b> ou <b>CLIQUE ESQUERDO</b>: Interagir | <b>Shift</b>: Correr | <b>Espaço</b>: Pular</div>
 
+<div class="panel repair" id="repair" hidden>
+  <small id="repTitle">Conserto</small>
+  <div class="repbar"><span id="repZone"></span><i id="repNeedle"></i></div>
+  <div class="tbar"><i id="repFill"></i></div>
+  <small id="repTxt">Segure E (ou o botão do mouse) enquanto a agulha estiver na faixa verde por 3 segundos.</small>
+</div>
+
 <div class="overlay" id="start">
   <div class="panel start">
     <small>Tycoon de hotel e restaurante</small>
     <h1>Grand Resort <em>&amp;</em> Kitchen</h1>
-    <p>Você é o gerente. Toque a campainha para fazer o check-in, limpe os quartos e recolha gorjetas e vendas da piscina. No computador da recepção você contrata e evolui a equipe e compra melhorias. Na cozinha, a Chef Maria tem receitas para você preparar com as próprias mãos.</p>
+    <p>Você é o gerente. Abra a ficha de cada hóspede no balcão para escolher o quarto, limpe os quartos, conserte goteiras, canos e lâmpadas e recolha gorjetas e vendas da piscina. No computador da recepção você contrata equipe, reforma o hotel e abre filiais.</p>
     <div class="keys">
       <kbd>W A S D</kbd><span>Andar (ou setas)</span>
       <kbd>Shift</kbd><span>Correr</span>
@@ -168,6 +198,7 @@ td.num{text-align:right} .pos{color:#7FD8C8} .neg{color:#F29A8E}
     </div>
     <button class="cta" id="play">Clique para jogar</button>
     <p class="note" id="lockNote">Se o navegador não liberar o mouse, o jogo entra no modo arrastar: segure o botão e arraste para olhar.</p>
+    <button class="note" id="resetSave" hidden style="text-decoration:underline;color:var(--coral);align-self:flex-start">Apagar progresso salvo e começar do zero</button>
   </div>
 </div>
 
@@ -175,16 +206,20 @@ td.num{text-align:right} .pos{color:#7FD8C8} .neg{color:#F29A8E}
   <div class="panel sheet" role="dialog" aria-label="Computador da recepção">
     <header>
       <h2>Gestão do Hotel</h2>
-      <div class="tabs" role="tablist">
-        <button role="tab" id="tabFinBtn" aria-selected="true">Finanças</button>
-        <button role="tab" id="tabStaffBtn" aria-selected="false">Equipe</button>
-        <button role="tab" id="tabUpgBtn" aria-selected="false">Melhorias</button>
-      </div>
+      <div class="tabs" id="pcTabs" role="tablist"></div>
       <button class="close" id="pcClose">Fechar · Esc</button>
     </header>
-    <section id="tabFin"></section>
-    <section id="tabStaff" hidden></section>
-    <section id="tabUpg" hidden></section>
+    <section id="pcBody"></section>
+  </div>
+</div>
+
+<div class="overlay modal" id="ficha" hidden>
+  <div class="panel sheet" role="dialog" aria-label="Ficha do cliente">
+    <header>
+      <h2>Ficha do cliente</h2>
+      <button class="close" id="fichaClose">Fechar · Esc</button>
+    </header>
+    <section id="fichaBody"></section>
   </div>
 </div>
 
@@ -217,12 +252,6 @@ td.num{text-align:right} .pos{color:#7FD8C8} .neg{color:#F29A8E}
 </div>
 
 <script>
-/* ============================================================
-   GRAND RESORT & KITCHEN TYCOON · 3D EM PRIMEIRA PESSOA
-   Unidades em metros · y para cima · norte = -z
-   Planta: Lobby (x -8..8, z -6..6) · Quartos (x -26..-8) · Restaurante e cozinha (x 8..28)
-           Piscina e pool bar ao norte (z -32..-8) · entrada principal ao sul (z 6..13)
-   ============================================================ */
 const $ = id => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
 const fmt = n => '$' + Math.round(n).toLocaleString('pt-BR');
@@ -238,7 +267,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xCFE8F2, 45, 120);
-const camera = new THREE.PerspectiveCamera(70, innerWidth/innerHeight, .05, 220);
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, .1, 1000);
 camera.position.set(0, 1.65, 10.5);
 scene.add(camera);
 addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
@@ -319,11 +348,13 @@ function floorMat(t, w, d, tile, o = {}){ return M(0xFFFFFF, Object.assign({map:
 /* ---------- Colisões (AABB no plano xz) e oclusores do raycast ---------- */
 const solids = [], occluders = [];
 const BOUND = {x1:-29.5, x2:31.5, z1:-33.5, z2:13.5};
-function solid(x1,z1,x2,z2){ const c = {x1:Math.min(x1,x2), x2:Math.max(x1,x2), z1:Math.min(z1,z2), z2:Math.max(z1,z2), on:true}; solids.push(c); return c; }
+let BUILD_FLOOR = 0;   // andar dos sólidos criados agora: 0 = térreo, 1 = 2º andar
+function solid(x1,z1,x2,z2){ const c = {x1:Math.min(x1,x2), x2:Math.max(x1,x2), z1:Math.min(z1,z2), z2:Math.max(z1,z2), on:true, floor:BUILD_FLOOR}; solids.push(c); return c; }
 function solidOf(m, pad = 0){ m.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(m); return solid(b.min.x - pad, b.min.z - pad, b.max.x + pad, b.max.z + pad); }
 function blocked(x, z, r = .3){
   if (x - r < BOUND.x1 || x + r > BOUND.x2 || z - r < BOUND.z1 || z + r > BOUND.z2) return true;
-  for (const c of solids) if (c.on && x + r > c.x1 && x - r < c.x2 && z + r > c.z1 && z - r < c.z2) return true;
+  const lv = levelAt(x, z);
+  for (const c of solids) if (c.on && c.floor === lv && x + r > c.x1 && x - r < c.x2 && z + r > c.z1 && z - r < c.z2) return true;
   return false;
 }
 /* Paredes com vãos de porta. wallX: corre ao longo de x em z fixo · wallZ: ao longo de z em x fixo */
@@ -358,16 +389,61 @@ scene.add(sun, sun.target);
 scene.add(new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), new THREE.MeshBasicMaterial({map:TEX.sky, side:THREE.BackSide, fog:false})));
 
 /* ============================================================
-   NÚCLEO DO JOGO · estado, dinheiro, avisos, sons, etiquetas
+   DADOS · valores da especificação (preços, diárias, estrelas por nível)
    ============================================================ */
-const G = {money:1500, rep:50, day:1, t:0, dayLen:240, incomeToday:0, expenseToday:0, log:[],
-           staff:{recep:0, maid:0, chef:0, waiter:0}, queue:[], guests:[], served:0, paused:true};
+const PRICE = {1:500, 2:2500, 3:10000};            // compra do quarto e etapa de reforma, por quarto
+const RATE = {1:120, 2:300, 3:800};                // diária por nível do quarto
+const ROOM_STARS = {1:3, 2:6, 3:9};                // estrelas do quarto, comparadas com a exigência do cliente
+const LEVEL = {0:'Em obras', 1:'Básico', 2:'Executiva', 3:'Presidencial'};
+const STARS_FOR_LEVEL = {1:0, 2:4, 3:7};           // estrelas do hotel exigidas para cada nível
+const STAGES = [{min:0, name:'Ruína'}, {min:1, name:'Limpeza & Reparo'}, {min:4, name:'Modernização'}, {min:7, name:'Alto Padrão'}];
+const CLIENT_TYPES = {
+  mochileiro:{name:'Mochileiro', exig:[10,35], budget:[90,150], stay:[1,2], stage:0, weight:4},
+  familia:{name:'Família', exig:[30,60], budget:[160,260], stay:[2,4], stage:2, weight:3},
+  executivo:{name:'Executivo', exig:[40,75], budget:[220,380], stay:[1,3], stage:2, weight:3},
+  vip:{name:'VIP', exig:[65,100], budget:[400,900], stay:[2,5], stage:3, weight:1},
+};
+const BRANCHES = [
+  {id:'city', name:'Cidade Urbano', cost:0, prev:null, fog:0xCFE8F2, sun:0xFFF0D6, desc:'Prédio corporativo, recepção moderna e restaurante interno.'},
+  {id:'island', name:'Ilha / Resort Tropical', cost:50000, prev:'city', fog:0x9FE3EE, sun:0xFFE7B0, desc:'Areia, oceano e bangalôs sobre a água, com bar de praia.'},
+  {id:'mountain', name:'Montanha / Chalé Alpino', cost:200000, prev:'island', fog:0xD9E6F2, sun:0xE8F0FF, desc:'Terreno nevado, chalés de madeira e lareiras.'},
+  {id:'desert', name:'Deserto / Oásis de Luxo', cost:1000000, prev:'mountain', fog:0xF2D2A0, sun:0xFFD08A, desc:'Domos de vidro translúcido, céu estrelado e spas aquecidos.'},
+  {id:'forest', name:'Floresta / Eco-Lodge', cost:5000000, prev:'desert', fog:0xB8D9A6, sun:0xE6F2C0, desc:'Casas na árvore, pontes suspensas e vegetação densa.'},
+];
+const PARTNERS = [
+  {id:'ads', name:'Campanha de marketing', cost:800, desc:'Por 3 minutos, os hóspedes chegam cerca de 40% mais depressa.'},
+  {id:'supplier', name:'Fornecedor premium', cost:2000, desc:'Ingredientes de alta qualidade: +0,1 na nota de todas as receitas. Compra única.'},
+];
+const NAMES = ['Ana Lima','Bruno Reis','Carla Dias','Diego Melo','Elisa Faria','Fábio Costa','Gabi Rocha','Hugo Pires','Iara Leal','João Prado','Laura Maia','Marcos Brito','Nina Sá','Otávio Lobo','Paula Vidal','Rafa Teles','Sofia Nunes','Tiago Abreu','Vera Lins','Yuri Castro'];
+
+/* ============================================================
+   ESTADO · G é o estado de domínio (serializável). rep = pontos, 100 pontos = 10 estrelas
+   ============================================================ */
+const G = {money:1500, rep:0, day:1, t:0, elapsed:0, dayLen:240, incomeToday:0, expenseToday:0, incomeLog:[], log:[],
+           staff:{recep:0, maid:0, chef:0, waiter:0}, staffLv:{recep:1, maid:1}, queue:[], guests:[], served:0, paused:true,
+           upg:{bar:false, floor:false, light:false}, friend:0, branch:'city', owned:['city'], plus:{}, partners:{adsT:0, supplier:false}};
 const ANIM = [];   // callbacks por quadro: (dt, time) => {}
+function addRep(points){ G.rep = Math.max(0, Math.min(100, G.rep + points)); }
+const starsNow = () => Math.max(0, Math.min(10, G.rep/10));
+const stageIndex = () => STAGES.filter(s => starsNow() >= s.min).length - 1;
+const stageName = () => STAGES[stageIndex()].name;
+/* Trava de reforma: texto com o que falta, ou null se o quarto pode ser comprado/evoluído agora */
+function gateOf(room){
+  const target = room.owned ? room.level + 1 : 1;
+  if (target > 3) return null;
+  const need = STARS_FOR_LEVEL[target];
+  return starsNow() >= need ? null : `precisa de ${need} estrela${need === 1 ? '' : 's'}`;
+}
 function addMoney(v, why){
-  G.money += v; if (v >= 0) G.incomeToday += v; else G.expenseToday -= v;
+  G.money += v;
+  if (v >= 0){ G.incomeToday += v; G.incomeLog.push({at:G.elapsed, v}); } else G.expenseToday -= v;
   G.log.unshift({day:G.day, time:clockStr(), why, v}); if (G.log.length > 40) G.log.pop();
 }
-function addRep(v){ G.rep = Math.max(0, Math.min(100, G.rep + v)); }
+/* Receita por segundo: média dos últimos 30 s de jogo */
+function incomePerSecond(){
+  G.incomeLog = G.incomeLog.filter(e => G.elapsed - e.at <= 30);
+  return G.incomeLog.reduce((s, e) => s + e.v, 0) / 30;
+}
 function toast(msg, kind = ''){
   const d = document.createElement('div'); d.className = 'toast ' + kind; d.textContent = msg;
   $('feed').prepend(d); setTimeout(() => d.remove(), 3800);
@@ -444,7 +520,7 @@ wallX(6, -8, 8, 5, MAT.wall, [[-1.5,1.5]], .2, 3.2);
 wallX(-6, -8, 8, 5, MAT.wall, [[4.5,7]]);
 wallZ(-8, -6, 6, 5, MAT.wall, [[-1.5,1.5]]);
 wallZ(8, -6, 6, 5, MAT.wall, [[-1.5,1.5]]);
-ceiling(-8,-6,8,6,5);
+
 // painel de madeira e logotipo dourado na parede do fundo
 B(8.4, 4.4, .06, M(0xFFFFFF,{map:rep(TEX.woodPanel,4,2), roughness:.55}), 0, 0, -5.87);
 { const logo = new THREE.Mesh(new THREE.PlaneGeometry(5.2,1.3), new THREE.MeshStandardMaterial({map:label('GRAND RESORT\n&  KITCHEN  ·  DESDE 1962',{w:1024,h:256,bg:'#3B2214',border:'#D8A64A',font:'110px Gloock, Georgia, serif',font2:'600 34px Outfit, sans-serif',lh:96}), metalness:.3, roughness:.4, emissive:0x2A1A0A}));
@@ -459,9 +535,9 @@ for (let c = 0; c < 4; c++) for (let r = 0; r < 2; r++){
   keyHooks.push(k);
 }
 // entrada: marquise, placa e vasos
-B(5.6,.18,3.2, MAT.woodDark, 0, 3.6, 7.7); for (const x of [-2.6,2.6]){ const p = CY(.07,.07,3.6, MAT.gold, x, 0, 9.1); solidOf(p, .05); }
+const EXTERIOR = []; EXTERIOR.push(B(5.6,.18,3.2, MAT.woodDark, 0, 3.6, 7.7)); for (const x of [-2.6,2.6]){ const p = CY(.07,.07,3.6, MAT.gold, x, 0, 9.1); solidOf(p, .05); }
 { const s = new THREE.Mesh(new THREE.PlaneGeometry(4,.8), new THREE.MeshStandardMaterial({map:label('GRAND RESORT',{w:1024,h:200,bg:'#2A1B14',font:'120px Gloock, Georgia, serif'}), emissive:0x221408}));
-  s.position.set(0, 4.25, 6.12); scene.add(s); }
+  s.position.set(0, 4.25, 6.12); scene.add(s); EXTERIOR.push(s); }
 floor(-1.6,6.2,1.6,8.2, M(0x5A3A26,{roughness:1}), .02);
 // balcão da recepção: madeira escura com tampo de mármore preto
 B(6.2,1.05,.9, MAT.woodDark, 0, 0, -3.4);
@@ -483,7 +559,7 @@ const bell = new THREE.Group(); bell.position.set(1.1, 1.13, -3.15); scene.add(b
 CY(.11,.12,.035, MAT.woodDark, 0, 0, 0, bell);
 mesh(new THREE.SphereGeometry(.09,20,10,0,Math.PI*2,0,Math.PI/2), MAT.gold, 0, .035, 0, bell);
 CY(.012,.012,.04, MAT.gold, 0, .12, 0, bell); SPH(.022, MAT.gold, 0, .17, 0, bell, 10);
-interact(bell, {label:() => G.queue.length ? `[E] Tocar campainha · check-in (${G.queue.length} na fila)` : 'Campainha · ninguém na fila', ok:() => G.queue.length > 0, action:() => ringBell()});
+interact(bell, {label:() => G.queue.length ? `[E] Tocar campainha · ficha do próximo hóspede (${G.queue.length} na fila)` : 'Campainha · ninguém na fila', ok:() => !!G.queue[0] && G.queue[0].inLine, action:() => ringBell()});
 let bellShake = 0;
 ANIM.push(dt => { if (bellShake > 0){ bellShake -= dt; bell.rotation.z = Math.sin(bellShake*60)*.15*bellShake; } else bell.rotation.z = 0; });
 // orquídeas sobre o balcão
@@ -522,9 +598,9 @@ function plant(x, z, s = 1){
   }
   solid(x - .36*s, z - .36*s, x + .36*s, z + .36*s); return g;
 }
-plant(-7.3,-5.3); plant(-7.3,5.3); plant(7.3,5.3); plant(3.9,-5.3); plant(-2.6,7.4,.8); plant(2.6,7.4,.8);
+plant(-7.3,-5.3); plant(-7.3,5.3); plant(7.3,3.2); plant(3.9,-5.3); plant(-2.6,7.4,.8); plant(2.6,7.4,.8);
 // carrinho de bagagem dourado
-{ const c = new THREE.Group(); c.position.set(6.2, 0, 3.4); scene.add(c);
+{ const c = new THREE.Group(); c.position.set(6.2, 0, 2.2); scene.add(c);
   B(1.2,.06,.7, MAT.gold, 0, .12, 0, c);
   for (const [dx,dz] of [[-.5,-.3],[.5,-.3],[-.5,.3],[.5,.3]]) SPH(.06, MAT.black, dx, .06, dz, c, 8);
   for (const dx of [-.55,.55]) CY(.02,.02,1.6, MAT.gold, dx, .18, 0, c, 8);
@@ -572,10 +648,9 @@ for (const x of [-12.5,-21.5]){ const s = new THREE.Mesh(new THREE.CylinderGeome
   B(.05,1.25,1.95, MAT.gold, -25.92, 1.18, 0); B(.45,.85,1.4, MAT.woodDark, -25.65, 0, 0); solid(-25.9,-.7,-25.4,.7);
   CY(.1,.08,.3, MAT.white, -25.65, .85, .3); }
 
-const PRICE = {1:800, 2:1200, 3:3000}, RATE = {1:60, 2:150, 3:400}, LEVEL = {0:'Em obras', 1:'Básico', 2:'Executiva', 3:'Presidencial'};
 const ROOMS = [
   {id:'101', cx:-12.5, side:-1, owned:true,  level:1},
-  {id:'102', cx:-12.5, side: 1, owned:true,  level:1},
+  {id:'102', cx:-12.5, side: 1, owned:false, level:0},
   {id:'103', cx:-21.5, side:-1, owned:false, level:0},
   {id:'104', cx:-21.5, side: 1, owned:false, level:0},
 ];
@@ -607,7 +682,7 @@ ROOMS.forEach(room => {
   room.sign = new THREE.Mesh(new THREE.BoxGeometry(1.5,.75,.04), [MAT.gold, MAT.gold, MAT.gold, MAT.gold, sm, sm]);
   room.sign.position.set(room.cx + 1.6, 1.7, room.side*2 - room.side*.95); scene.add(room.sign);
   room.signCanvas = sc; room.signTex = st;
-  interact(room.sign, {label:() => signLabel(room), ok:() => G.money >= signCost(room), action:() => upgradeRoom(room)});
+  interact(room.sign, {label:() => signLabel(room), ok:() => !gateOf(room) && G.money >= signCost(room), action:() => upgradeRoom(room)});
   buildRoom(room);
 });
 ANIM.push((dt, t) => {
@@ -636,8 +711,9 @@ function toggleDoor(room, force){
 function signVisible(room){ return !room.owned || (room.level < 3 && room.state === 'free' && !room.guest); }
 function signCost(room){ return PRICE[room.owned ? room.level + 1 : 1]; }
 function signLabel(room){
-  const c = signCost(room), afford = G.money >= c ? '' : ' (caixa insuficiente)';
-  return room.owned ? `[E] Evoluir ${room.id} para ${LEVEL[room.level + 1]} · ${fmt(c)}${afford}` : `[E] Comprar quarto ${room.id} · ${fmt(c)}${afford}`;
+  const c = signCost(room), block = gateOf(room) || (G.money >= c ? '' : 'caixa insuficiente');
+  const head = room.owned ? `[E] Evoluir ${room.id} para ${LEVEL[room.level + 1]} · ${fmt(c)}` : `[E] Comprar quarto ${room.id} · ${fmt(c)}`;
+  return block ? `${head} (${block})` : head;
 }
 function drawSign(room){
   const g = room.signCanvas.getContext('2d'), w = 512, h = 256, c = signCost(room);
@@ -650,6 +726,8 @@ function drawSign(room){
 }
 function upgradeRoom(room){
   const c = signCost(room);
+  const gate = gateOf(room);
+  if (gate){ SFX.error(); toast(`Obra bloqueada · ${gate}`, 'bad'); return; }
   if (G.money < c){ SFX.error(); toast(`Faltam ${fmt(c - G.money)} para esta obra`, 'bad'); return; }
   addMoney(-c, room.owned ? `Upgrade ${room.id} → ${LEVEL[room.level + 1]}` : `Compra do quarto ${room.id}`);
   if (!room.owned){ room.owned = true; room.level = 1; } else room.level++;
@@ -796,7 +874,6 @@ function cleanPiece(room, piece, byStaff){
     else toast(`Faxineira deixou o quarto ${room.id} pronto`, 'good');
   }
 }
-dirtyRoom(ROOMS[1]);
 
 /* ============================================================
    ZONA C · RESTAURANTE E COZINHA INDUSTRIAL  (x 8..28, z -8..8)
@@ -1097,10 +1174,11 @@ const NPCS = [];
 const pick = a => a[Math.floor(Math.random()*a.length)];
 const SKINS = [0xF1C9A5,0xD9A57E,0xA8714A,0x7A4E2E,0xE8B894], HAIR = [0x2A1B14,0x5A3A20,0xD8B26A,0x1E1C22,0x8A5A34,0xB0B0B0];
 const SHIRTS = [0x2F6FB0,0xE86A5A,0x3FA35F,0xF2A93B,0x7D4A84,0x2BB3B1,0xF59AB6,0x5A6470];
-function makeNPC(kind){
+function makeNPC(kind, opts = {}){
   const g = new THREE.Group(); scene.add(g);
-  const look = {guest:{shirt:pick(SHIRTS), pants:pick([0x2A3442,0x6E5A44,0xE8E2D6,0x3B4F7A])}, recep:{shirt:0x7A1F2E, pants:0x1E1C22},
+  const look = {guest:{shirt:pick(SHIRTS), pants:pick([0x2A3442,0x6E5A44,0xE8E2D6,0x3B4F7A])}, recep:{shirt:0xFFFFFF, pants:0x15171C},
     maid:{shirt:0x9AC6E8, pants:0x9AC6E8}, chef:{shirt:0xFFFFFF, pants:0x2A2A2A}, waiter:{shirt:0x1E1C22, pants:0x1E1C22}, bartender:{shirt:0xF5C542, pants:0x2A3442}}[kind];
+  if (opts.shirt !== undefined) look.shirt = opts.shirt; if (opts.pants !== undefined) look.pants = opts.pants;
   const skin = M(pick(SKINS)), shirt = M(look.shirt,{roughness:.8}), pants = M(look.pants,{roughness:.85});
   const body = new THREE.Group(); g.add(body);
   const legs = [], arms = [];
@@ -1119,9 +1197,12 @@ function makeNPC(kind){
   SPH(.17, skin, 0, 1.72, 0, body, 16);
   mesh(new THREE.SphereGeometry(.18,16,8,0,Math.PI*2,0,Math.PI/2.1), M(pick(HAIR),{roughness:.9}), 0, 1.74, -.01, body);
   SPH(.022, M(0x1E1C22), -.06, 1.75, .155, body, 6); SPH(.022, M(0x1E1C22), .06, 1.75, .155, body, 6);
-  if (kind === 'chef'){ CY(.17,.15,.3, MAT.white, 0, 1.85, 0, body, 14); SPH(.2, MAT.white, 0, 2.18, 0, body, 12); }
-  if (kind === 'maid'){ B(.3,.45,.03, MAT.white, 0, .75, .24, body); }
-  if (kind === 'recep'){ for (let k = 0; k < 3; k++) SPH(.018, MAT.gold, 0, 1.0 + k*.12, .235, body, 6); }
+  if (kind === 'chef'){
+    CY(.16,.16,.12, MAT.white, 0, 1.8, 0, body, 14); CY(.22,.2,.55, MAT.white, 0, 1.92, 0, body, 14); SPH(.22, MAT.white, 0, 2.47, 0, body, 12);
+    for (const bx of [-.09,.09]) for (const y of [.95,1.12]) SPH(.014, M(0x2A2A2A), bx, y, .235, body, 6);
+  }
+  if (kind === 'maid'){ B(.3,.45,.03, MAT.white, 0, .75, .24, body); SPH(.07, M(0x5A3A20), 0, 1.9, -.08, body, 8); }
+  if (kind === 'recep'){ B(.44,.56,.26, M(0x15171C), 0, .85, 0, body); B(.08,.1,.02, MAT.gold, -.12, 1.1, .225, body); }
   if (kind === 'waiter'){ B(.12,.05,.03, MAT.white, 0, 1.42, .2, body); B(.25,.35,.02, MAT.white, 0, .95, .24, body); }
   if (kind === 'bartender'){ const hat = mesh(new THREE.CylinderGeometry(.2,.24,.12,14), M(0xC99A52), 0, 1.92, 0, body); CY(.32,.32,.02, M(0xC99A52), 0, 1.86, 0, body, 18); }
   body.traverse(o => { if (o.isMesh) o.castShadow = true; });
@@ -1130,7 +1211,7 @@ function makeNPC(kind){
   NPCS.push(n); return n;
 }
 function removeNPC(n){
-  scene.remove(n.g); n.g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  scene.remove(n.g); unregister(n.g); n.g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
   const i = NPCS.indexOf(n); if (i >= 0) NPCS.splice(i,1);
   const j = G.guests.indexOf(n); if (j >= 0) G.guests.splice(j,1);
 }
@@ -1165,16 +1246,42 @@ function stepNPC(n, dt){
 }
 
 /* ============================================================
-   HÓSPEDES · fila → check-in → quarto → mesa → piscina → checkout
+   HÓSPEDES · ficha, encaixe no quarto, check-in e aparência por tipo de cliente
    ============================================================ */
+let guestSeq = 0, fichaGuest = null;
 const slotPos = i => [0, -2.25 + i*1.0];
+/* Perfil: tipo liberado pela etapa atual, orçamento máximo, exigência de conforto (0-100%) e estadia */
+function makeProfile(){
+  const pool = Object.keys(CLIENT_TYPES).filter(k => stageIndex() >= CLIENT_TYPES[k].stage).flatMap(k => Array(CLIENT_TYPES[k].weight).fill(k));
+  const k = pick(pool), d = CLIENT_TYPES[k], between = (a, b) => a + Math.random()*(b - a);
+  return {no:++guestSeq, name:pick(NAMES), type:k, persona:pick(PERSONA_POOL[k]), typeName:d.name, budget:Math.round(between(d.budget[0], d.budget[1])),
+          exig:Math.round(between(d.exig[0], d.exig[1])), nights:d.stay[0] + Math.floor(Math.random()*(d.stay[1] - d.stay[0] + 1))};
+}
+/* Aparência distinta por tipo: mochila, família (menor), maleta e óculos/relógio dourado */
+
+/* Encaixe: ruim se o quarto está sujo ou tem menos estrelas que a exigência; acima do orçamento se a diária passa do limite; senão, perfeito */
+function reviewOf(p, room){
+  const total = RATE[room.level]*p.nights, need = p.exig/10;
+  if (room.state === 'dirty' || ROOM_STARS[room.level] < need)
+    return {q:'ruim', pay:Math.round(total*.4), rep:-5, txt: room.state === 'dirty' ? 'Quarto sujo' : 'Abaixo da exigência'};
+  if (RATE[room.level] > p.budget) return {q:'acima', pay:Math.round(total*.8), rep:0, txt:'Acima do orçamento'};
+  return {q:'perfeito', pay:total, rep:2, txt:'Encaixe perfeito'};
+}
+const roomsForGuest = () => ROOMS.filter(r => r.owned && !r.guest);
+function bestRoomFor(p){
+  const rank = {perfeito:2, acima:1, ruim:0};
+  return roomsForGuest().map(r => ({r, v:reviewOf(p, r)}))
+    .sort((a,b) => rank[b.v.q] - rank[a.v.q] || b.v.pay - a.v.pay)[0]?.r || null;
+}
 function spawnGuest(){
-  const n = makeNPC('guest'); n.g.position.set((Math.random() - .5)*2, 0, 12.8); n.at = 'OUT';
-  n.state = 'queue'; n.inLine = false;
+  const profile = makeProfile(), n = makeNPC('guest', PERSONAS[profile.persona]); n.g.position.set((Math.random() - .5)*2, 0, 12.8); n.at = 'OUT';
+  n.state = 'queue'; n.inLine = false; n.profile = profile; decorateClient(n, profile.persona);
   n.patience = 75 + (G.staff.recep ? [15,30,45][G.staffLv.recep - 1] : 0) + (G.upg.light ? 10 : 0);
   G.queue.push(n); G.guests.push(n);
   route(n, 'LS', [slotPos(G.queue.length - 1)], () => { n.inLine = true; n.g.rotation.y = Math.PI; });
-  toast('Novo hóspede chegou à recepção');
+  interact(n.g, {label:() => G.queue.indexOf(n) === 0 ? '[E] Abrir ficha do hóspede · escolher quarto' : `Na fila · posição ${G.queue.indexOf(n) + 1}`,
+                 ok:() => G.queue[0] === n && n.inLine, action:() => openFicha(n)});
+  toast(`Novo hóspede: ${n.profile.name} · ${n.profile.typeName}`);
 }
 function updateQueue(){
   G.queue.forEach((n,i) => {
@@ -1182,21 +1289,26 @@ function updateQueue(){
     else if (n.path.length) n.path[n.path.length - 1] = slotPos(i);
   });
 }
-function checkIn(byStaff){
-  const n = G.queue[0]; if (!n) return false;
-  const free = ROOMS.filter(r => r.owned && r.state === 'free' && !r.guest).sort((a,b) => b.level - a.level);
-  if (!free.length){ if (!byStaff){ SFX.error(); toast('Nenhum quarto livre e limpo · limpe ou compre um quarto', 'bad'); } return false; }
-  const room = free[0];
-  G.queue.shift(); n.inLine = false; updateQueue();
-  room.guest = n; n.room = room; n.state = 'toRoom';
-  const v = RATE[room.level]; addMoney(v, `Check-in quarto ${room.id} (${LEVEL[room.level]})`);
-  toast(`${byStaff ? 'Recepcionista fez check-in' : 'Check-in'} · quarto ${room.id} · +${fmt(v)}`, 'good');
+/* Check-in de um hóspede da fila em um quarto: cobra o encaixe e registra a avaliação */
+function checkIn(n, room, byStaff){
+  if (!room || !n.inLine || G.queue.indexOf(n) < 0 || !room.owned || room.guest) return false;
+  G.queue.splice(G.queue.indexOf(n), 1); n.inLine = false; unregister(n.g); updateQueue();
+  const rv = reviewOf(n.profile, room);
+  room.guest = n; n.room = room; n.state = 'toRoom'; n.quality = rv.q;
+  addMoney(rv.pay, `Check-in ${n.profile.name} · quarto ${room.id}`); addRep(rv.rep);
+  toast(`${byStaff ? 'Recepção: ' : ''}${n.profile.name} no quarto ${room.id} · ${rv.txt} · ${rv.pay >= 0 ? '+' : '−'}${fmt(Math.abs(rv.pay))}`, rv.rep >= 0 ? 'good' : 'bad');
   if (!byStaff) SFX.coin();
   toggleDoor(room, true);
   route(n, 'R' + room.id, [], () => { n.state = 'room'; toggleDoor(room, false); wait(n, 22, () => leaveRoom(n)); });
   return true;
 }
-function ringBell(){ bellShake = .6; SFX.bell(); checkIn(false); }
+/* Recepcionista: atende o primeiro da fila, mas só em um quarto que não seja encaixe ruim */
+function autoCheckIn(){
+  const n = G.queue[0]; if (!n || !n.inLine) return false;
+  const room = bestRoomFor(n.profile);
+  return room && reviewOf(n.profile, room).q !== 'ruim' ? checkIn(n, room, true) : false;
+}
+function ringBell(){ bellShake = .6; SFX.bell(); openFicha(G.queue[0]); }
 function leaveRoom(n){
   toggleDoor(n.room, true); n.state = 'toFood';
   const t = TABLES.find(t => !t.guest);
@@ -1233,7 +1345,7 @@ function guestTick(n, dt){
     const p = Math.ceil(n.patience);
     n.tag.userData.set(`Check-in · ${p}s`, p < 20 ? 'rgba(232,106,90,.95)' : 'rgba(216,166,74,.95)', '#2A1B14');
     if (n.patience <= 0){
-      G.queue.splice(G.queue.indexOf(n), 1); updateQueue(); n.inLine = false; addRep(-4); n.state = 'leaving';
+      G.queue.splice(G.queue.indexOf(n), 1); updateQueue(); n.inLine = false; unregister(n.g); addRep(-4); n.state = 'leaving';
       toast('Um hóspede desistiu de esperar na fila · reputação caiu', 'bad');
       route(n, 'OUT', [], () => removeNPC(n));
     }
@@ -1250,7 +1362,6 @@ function guestTick(n, dt){
   n.tag.userData.set(n.state === 'toRoom' || n.state === 'room' ? `${label} ${n.room.id}` : label,
     n.state === 'leaving' ? 'rgba(232,106,90,.95)' : special ? 'rgba(255,210,90,.95)' : 'rgba(42,27,20,.88)', special ? '#2A1B14' : '#F6EFE3');
 }
-
 /* ============================================================
    EQUIPE · contratada no computador da recepção
    ============================================================ */
@@ -1285,7 +1396,10 @@ function hire(role){
 function spawnStaff(role, i){
   const n = makeNPC(role); n.role = role; STAFF.push(n);
   if (role === 'recep'){ n.g.position.set(1.6, 0, -4.6); n.g.rotation.y = 0; }
-  if (role === 'maid'){ n.g.position.set(NODES.CW[0], 0, NODES.CW[1] + (i ? .8 : -.8)); n.at = 'CW'; }
+  if (role === 'maid'){ n.g.position.set(NODES.CW[0], 0, NODES.CW[1] + (i ? .8 : -.8)); n.at = 'CW';
+    const cart = new THREE.Group(); cart.position.set(.6, 0, .2); n.g.add(cart);
+    B(.7,.45,.5, M(0xC9CED6,{metalness:.5, roughness:.4}), 0, .25, 0, cart);
+    CY(.12,.1,.22, M(0x3D7CC9), -.15, .5, 0, cart, 12); CY(.12,.1,.22, M(0xF5C542), .15, .5, 0, cart, 12); }
   if (role === 'chef'){ n.g.position.set(26.1, 0, -1.5 + (i ? -1.1 : .2)); n.g.rotation.y = Math.PI/2; }
   if (role === 'waiter'){ n.g.position.set(NODES.DW[0], 0, NODES.DW[1] + (i ? 1 : -1)); n.at = 'DW'; }
   n.tag.userData.set(staffName(role), 'rgba(43,179,177,.95)', '#10302F');
@@ -1293,7 +1407,7 @@ function spawnStaff(role, i){
 function staffTick(n, dt){
   if (n.role === 'recep'){
     n.work += dt;
-    if (n.work > [8,5,3][G.staffLv.recep - 1]){ n.work = 0; if (G.queue.length && G.queue[0].inLine) checkIn(true); }
+    if (n.work > [8,5,3][G.staffLv.recep - 1]){ n.work = 0; autoCheckIn(); }
   }
   if (n.role === 'chef' && !RM.matches){
     const busy = STOVE.queue.length > 0;
@@ -1329,7 +1443,7 @@ function staffTick(n, dt){
 function spawnBartender(){ const b = makeNPC('bartender'); b.g.position.set(BARTENDER_SPOT.x, 0, BARTENDER_SPOT.z); b.g.rotation.y = -Math.PI/2; b.tag.userData.set('Barman', 'rgba(245,197,66,.95)', '#2A1B14'); b.role = 'bartender'; }
 
 /* ============================================================
-   ECONOMIA · relógio do dia, salários, chegada de hóspedes
+   ECONOMIA · relógio do dia, salários, chegada de hóspedes e crises
    ============================================================ */
 const pad2 = v => String(v).padStart(2, '0');
 function clockStr(){ const m = 8*60 + Math.floor(G.t/G.dayLen*14*60); return `${pad2(Math.floor(m/60))}:${pad2(m % 60)}`; }
@@ -1338,93 +1452,32 @@ function endDay(){
   const w = wagesPerDay(); if (w) addMoney(-w, `Salários do dia ${G.day}`);
   toast(`Fim do dia ${G.day} · receita ${fmt(G.incomeToday)} · despesas ${fmt(G.expenseToday)}`);
   G.day++; G.t = 0; G.incomeToday = 0; G.expenseToday = 0;
+  GAME.save.save();
 }
-let spawnTimer = 3;
+let spawnTimer = 4, dirtT = 40;
+/* Chegada de hóspedes a cada 15–30 s (60% disso com campanha de marketing ativa) */
 function simulate(dt){
-  G.t += dt; if (G.t >= G.dayLen) endDay();
+  G.t += dt; G.elapsed += dt;
+  if (G.t >= G.dayLen) endDay();
+  if (G.partners.adsT > 0) G.partners.adsT = Math.max(0, G.partners.adsT - dt);
   spawnTimer -= dt;
   if (spawnTimer <= 0){
-    spawnTimer = Math.max(10, 28 - G.rep/5) + Math.random()*6;
-    if (G.queue.length < 5 && G.guests.length < 14) spawnGuest();
+    spawnTimer = (15 + Math.random()*15) * (G.partners.adsT > 0 ? .6 : 1);
+    if (G.queue.length < 6 && G.guests.length < 16) spawnGuest();
   }
   for (const n of NPCS.slice()){ stepNPC(n, dt); if (n.kind === 'guest') guestTick(n, dt); else if (n.role) staffTick(n, dt); }
   keyHooks.forEach((k,i) => k.visible = !(ROOMS[i] && ROOMS[i].guest));
   // sujeira aparece de tempos em tempos em quartos livres
-  G.dirtT = (G.dirtT === undefined ? 40 : G.dirtT) - dt;
-  if (G.dirtT <= 0){
-    G.dirtT = 40 + Math.random()*25;
-    const opts = ROOMS.filter(r => r.owned && r.state === 'free' && !r.guest);
+  dirtT -= dt;
+  if (dirtT <= 0){
+    dirtT = 40 + Math.random()*25;
+    const opts = ROOMS.concat(UPPER).filter(r => r.owned && r.state === 'free' && !r.guest);
     if (opts.length){ const r = pick(opts); dirtyRoom(r, 1 + Math.floor(Math.random()*2)); toast(`Apareceu sujeira no quarto ${r.id}`); }
   }
   missionTick(dt);
+  CRISES.tick(dt);
+  if (starsNow() >= 10) G.plus[G.branch] = true;
 }
-
-/* ============================================================
-   COMPUTADOR DA RECEPÇÃO · finanças e contratação
-   ============================================================ */
-let pcOpen = false, pcTab = 'fin';
-function openPC(){
-  pcOpen = true; $('pc').hidden = false; renderPC();
-  if (controls.isLocked) controls.unlock();
-}
-function closePC(fromKey){
-  pcOpen = false; $('pc').hidden = true; $('chef').hidden = true;
-  if (dragMode) return;
-  if (fromKey){ pauseOverlay(); return; }
-  try { controls.lock(); } catch(e){ pauseOverlay(); }
-}
-function pauseOverlay(){ $('start').hidden = false; $('play').textContent = 'Clique para continuar'; G.paused = true; }
-function renderPC(){
-  for (const [k,id] of [['fin','tabFin'],['staff','tabStaff'],['upg','tabUpg']]){ $(id + 'Btn').setAttribute('aria-selected', pcTab === k); $(id).hidden = pcTab !== k; }
-  if (pcTab === 'upg') return renderUpgrades();
-  if (pcTab === 'fin'){
-    const rows = G.log.slice(0, 14).map(l => `<tr><td>Dia ${l.day} · ${l.time}</td><td>${l.why}</td><td class="num ${l.v >= 0 ? 'pos' : 'neg'}">${l.v >= 0 ? '+' : '−'}${fmt(Math.abs(l.v))}</td></tr>`).join('');
-    $('tabFin').innerHTML = `<div class="kpis">
-      <div class="kpi"><span>Caixa</span><b>${fmt(G.money)}</b></div>
-      <div class="kpi"><span>Receita hoje</span><b class="pos">${fmt(G.incomeToday)}</b></div>
-      <div class="kpi"><span>Despesas hoje</span><b class="neg">${fmt(G.expenseToday)}</b></div>
-      <div class="kpi"><span>Salários / dia</span><b>${fmt(wagesPerDay())}</b></div>
-      <div class="kpi"><span>Reputação</span><b>${Math.round(G.rep)}/100</b></div>
-      <div class="kpi"><span>Refeições servidas</span><b>${G.served}</b></div></div>
-      <table><thead><tr><th>Quando</th><th>Lançamento</th><th class="num">Valor</th></tr></thead><tbody>${rows || '<tr><td colspan="3">Nenhum lançamento ainda. Faça o primeiro check-in na campainha.</td></tr>'}</tbody></table>`;
-  } else {
-    $('tabStaff').innerHTML = '<div class="staff">' + Object.entries(ROLES).map(([k,r]) => {
-      const full = G.staff[k] >= r.max, poor = G.money < r.cost;
-      let lv = '', evo = '';
-      if (r.levels){
-        const L = G.staffLv[k];
-        lv = `<span class="lv">Nível ${L}: ${r.levels[L - 1].txt}</span>`;
-        evo = L < r.levels.length ? `<button data-evolve="${k}" ${G.money < r.levels[L].cost ? 'disabled' : ''}>Evoluir para Nv ${L + 1} · ${fmt(r.levels[L].cost)}</button>` : '<button disabled>Nível máximo</button>';
-      }
-      return `<div class="role"><h3>${r.name}</h3><p>${r.desc}</p>${lv}<span class="meta">Salário ${fmt(r.wage)}/dia · contratados ${G.staff[k]}/${r.max}</span>
-        <div class="btns"><button data-hire="${k}" ${full || poor ? 'disabled' : ''}>${full ? 'Equipe completa' : 'Contratar · ' + fmt(r.cost)}</button>${evo}</div></div>`;
-    }).join('') + '</div>';
-    $('tabStaff').querySelectorAll('[data-hire]').forEach(b => b.onclick = () => hire(b.dataset.hire));
-    $('tabStaff').querySelectorAll('[data-evolve]').forEach(b => b.onclick = () => evolve(b.dataset.evolve));
-  }
-}
-function renderUpgrades(){
-  const rooms = ROOMS.map(room => {
-    let btn, note;
-    if (!room.owned){ note = 'Em obras'; btn = `<button data-room="${room.id}" ${G.money < PRICE[1] ? 'disabled' : ''}>Comprar · ${fmt(PRICE[1])}</button>`; }
-    else if (room.level >= 3){ note = LEVEL[3]; btn = '<button disabled>Nível máximo</button>'; }
-    else {
-      const busy = room.guest || room.state !== 'free', c = PRICE[room.level + 1];
-      note = LEVEL[room.level] + (busy ? (room.guest ? ' · ocupado agora' : ' · precisa de limpeza antes da obra') : '');
-      btn = `<button data-room="${room.id}" ${busy || G.money < c ? 'disabled' : ''}>Evoluir para ${LEVEL[room.level + 1]} · ${fmt(c)}</button>`;
-    }
-    return `<div class="role"><h3>Quarto ${room.id}</h3><p>${note} · diária ${fmt(RATE[Math.max(1, room.level)])}</p><div class="btns">${btn}</div></div>`;
-  }).join('');
-  const hotel = Object.entries(UPGRADES).map(([k,u]) => `<div class="role"><h3>${u.name}</h3><p>${u.desc}</p><div class="btns">${G.upg[k] ? '<button disabled>Concluído</button>' : `<button data-upg="${k}" ${G.money < u.cost ? 'disabled' : ''}>Comprar · ${fmt(u.cost)}</button>`}</div></div>`).join('');
-  $('tabUpg').innerHTML = `<p class="sub">Suítes</p><div class="staff">${rooms}</div><p class="sub" style="margin-top:16px">Hotel</p><div class="staff">${hotel}</div>`;
-  $('tabUpg').querySelectorAll('[data-room]').forEach(b => b.onclick = () => { upgradeRoom(ROOMS.find(r => r.id === b.dataset.room)); renderPC(); });
-  $('tabUpg').querySelectorAll('[data-upg]').forEach(b => b.onclick = () => buyUpgrade(b.dataset.upg));
-}
-$('tabFinBtn').onclick = () => { pcTab = 'fin'; renderPC(); };
-$('tabStaffBtn').onclick = () => { pcTab = 'staff'; renderPC(); };
-$('tabUpgBtn').onclick = () => { pcTab = 'upg'; renderPC(); };
-$('pcClose').onclick = () => closePC(false);
-
 /* ============================================================
    CONTROLES · PointerLockControls com modo arrastar de reserva
    ============================================================ */
@@ -1497,7 +1550,9 @@ function move(dt){
     if (!jumpH) bob += dt*(run ? 13 : 9);
   }
   const sway = moving && !jumpH && !RM.matches ? Math.sin(bob)*.035 : 0;
-  p.y = 1.65 + jumpH + sway;
+  const h = stairH(p.x, p.z);
+  if (h !== null) PLAYER_LEVEL = h > UP_Y/2 ? 1 : 0;
+  p.y = 1.65 + (h !== null ? h : (PLAYER_LEVEL ? UP_Y : 0)) + jumpH + sway;
 }
 
 /* ============================================================
@@ -1533,9 +1588,10 @@ function interactNow(){
 }
 
 /* ============================================================
-   HUD
+   HUD · caixa, receita por segundo, estrelas, etapa, ocupação, relógio e zona
    ============================================================ */
 function zoneAt(x, z){
+  if (PLAYER_LEVEL && x > -8 && x < 8 && z > -6 && z < 6) return 'Segundo andar';
   if (z > 6) return 'Entrada principal';
   if (x > -8 && x < 8 && z > -6) return 'Lobby e Recepção';
   if (x <= -8 && x > -26 && z > -10 && z < 10){
@@ -1548,20 +1604,25 @@ function zoneAt(x, z){
   if (z < -8 && x > -1 && x < 23 && z > -27) return 'Piscina e Pool Bar';
   return 'Jardim do resort';
 }
-let hudT = 0;
+const occupancy = () => { const owned = ROOMS.filter(r => r.owned); return owned.length ? Math.round(owned.filter(r => r.guest).length/owned.length*100) : 0; };
+let hudT = 0, lastStage = -1;
 function hud(dt){
   hudT -= dt; if (hudT > 0) return; hudT = .15;
   $('money').textContent = fmt(G.money);
   $('money').style.color = G.money < 0 ? '#F29A8E' : '';
-  const s = Math.max(0, Math.min(5, Math.round(G.rep/20)));
-  $('rep').textContent = '★'.repeat(s) + '☆'.repeat(5 - s);
+  $('income').textContent = fmt(incomePerSecond()) + ' /s';
+  const s = starsNow(), full = Math.floor(s);
+  $('rep').textContent = '★'.repeat(full) + '☆'.repeat(10 - full);
+  $('starsNum').textContent = s.toFixed(1).replace('.', ',');
+  if (stageIndex() !== lastStage){ lastStage = stageIndex(); WORLD.applyStage(lastStage); }
+  $('stage').textContent = stageName();
+  $('occ').textContent = occupancy() + '%';
   $('guests').textContent = G.guests.length;
   $('queue').textContent = G.queue.length;
   $('clock').textContent = `Dia ${G.day} · ${clockStr()}`;
   $('zone').textContent = zoneAt(camera.position.x, camera.position.z);
   if (pcOpen && !$('pc').hidden && pcTab === 'fin') renderPC();
 }
-
 /* ============================================================
    MELHORIAS DO HOTEL · pool bar, reforma do piso, iluminação
    ============================================================ */
@@ -1593,6 +1654,8 @@ function buyUpgrade(k){
   const u = UPGRADES[k]; if (G.upg[k]) return;
   if (G.money < u.cost){ SFX.error(); toast(`Faltam ${fmt(u.cost - G.money)} para: ${u.name}`, 'bad'); return; }
   addMoney(-u.cost, u.name); G.upg[k] = true; SFX.buy(); applyUpgrade(k);
+  if (k === 'floor') addRep(5);
+  if (k === 'light') addRep(4);
   toast(`${u.name} · concluído`, 'good'); renderPC();
 }
 function applyUpgrade(k){
@@ -1600,7 +1663,6 @@ function applyUpgrade(k){
   if (k === 'floor'){
     lobbyFloor.material = floorMat(TEX_PREMIUM,16,12,2.5, THREE.Reflector ? {transparent:true, opacity:.82, roughness:.1, metalness:.1} : {roughness:.1, metalness:.1});
     diningFloor.material = floorMat(TEX_HERRING,12,16,1.5,{roughness:.45});
-    addRep(5);
   }
   if (k === 'light'){
     scene.traverse(o => { if (o.isPointLight) o.intensity *= 1.35; });
@@ -1609,7 +1671,6 @@ function applyUpgrade(k){
     for (const [w,d,x,z] of [[15.6,.06,0,-5.85],[15.6,.06,0,5.85],[.06,11.6,-7.85,0],[.06,11.6,7.85,0]]) B(w,.05,d, led, x, 4.8, z, scene, false);
     for (const [w,d,x,z] of [[11.6,.06,14,-7.85],[11.6,.06,14,7.85]]) B(w,.05,d, led, x, 3.8, z, scene, false);
     lamp(-5, 3.6, 3, 0xFFE2B0, .9, 10); lamp(14, 3.4, 0, 0xFFE2B0, .9, 12);
-    addRep(4);
   }
 }
 
@@ -1632,8 +1693,16 @@ const RECIPES = [
   {id:'salmao', name:'Salmão ao Molho de Ervas', need:['salmao','ervas','limao','manteiga','batata'], chops:4, zone:.15, cook:{speed:10, ideal:58, tol:6}, limit:170, base:180, bonus:260, unlock:4, raw:0xF08A6A, done:0xD9784A},
   {id:'risoto', name:'Risoto de Camarão', need:['arroz','camarao','queijo','manteiga','ervas'], chops:4, zone:.12, cook:{speed:6, ideal:72, tol:6}, limit:190, base:260, bonus:380, unlock:7, raw:0xF4F1EA, done:0xE8C77A},
 ];
+/* Materiais de comida: MeshPhysicalMaterial com verniz (clearcoat) e relevo (bumpMap) para grelha, massa e farelo */
+const PM = (color, o = {}) => new THREE.MeshPhysicalMaterial(Object.assign({color, roughness:.6, metalness:0, clearcoat:0}, o));
+const DARK_FOOD = PM(0x2A1B14, {roughness:.9});
+const FOOD_TEX = {
+  grill: tex(128, (g,s) => { g.fillStyle = '#7A7A7A'; g.fillRect(0,0,s,s); g.strokeStyle = '#FFFFFF'; g.lineWidth = 12; for (let k = -s; k < s*2; k += 32){ g.beginPath(); g.moveTo(k,0); g.lineTo(k+s,s); g.stroke(); } }),
+  crumb: tex(128, (g,s) => { seed = 13; g.fillStyle = '#707070'; g.fillRect(0,0,s,s); noise(g,s,s,.35,900); }),
+  salmon: tex(128, (g,s) => { g.fillStyle = '#FFFFFF'; g.fillRect(0,0,s,s); g.strokeStyle = 'rgba(70,35,20,.75)'; g.lineWidth = 8; for (let k = 0; k < s*2; k += 32){ g.beginPath(); g.moveTo(k,0); g.lineTo(k-s*.5,s); g.stroke(); } }),
+};
 function ingMesh(k){
-  const d = INGR[k], g = new THREE.Group(), m = M(d.c, {roughness:.6});
+  const d = INGR[k], g = new THREE.Group(), m = PM(d.c, {roughness:.5, clearcoat:.25});
   switch (d.s){
     case 'bun': mesh(new THREE.SphereGeometry(.08,14,8,0,Math.PI*2,0,Math.PI/2), m, 0, .04, 0, g); CY(.08,.08,.035, m, 0, 0, 0, g, 14); break;
     case 'box': B(.17,.07,.12, m, 0, 0, 0, g); break;
@@ -1697,35 +1766,97 @@ interact(plateG, {
 const pan = new THREE.Group(); pan.position.set(-.22, .97, 1); stoveG.add(pan); pan.visible = false;
 CY(.2,.17,.06, MAT.steelDark, 0, 0, 0, pan, 20); B(.3,.025,.04, MAT.black, -.33, .04, 0, pan);
 const panFood = CY(.15,.15,.04, M(0xFFFFFF,{roughness:.7}), 0, .03, 0, pan, 18);
-const smoke = [];
-for (let i = 0; i < 6; i++){ const s = new THREE.Mesh(new THREE.SphereGeometry(.06,8,6), new THREE.MeshBasicMaterial({color:0x666666, transparent:true, opacity:.4, depthWrite:false})); pan.add(s); smoke.push(s); }
-const panFlames = [];
-for (let f = 0; f < 6; f++){ const a = f/6*Math.PI*2, fl = new THREE.Mesh(new THREE.ConeGeometry(.03,.12,6), new THREE.MeshBasicMaterial({color:f % 2 ? 0x4FA3FF : 0xFFA040, transparent:true, opacity:.85})); fl.position.set(-.22 + Math.cos(a)*.11, 1.0, 1 + Math.sin(a)*.11); stoveG.add(fl); panFlames.push(fl); }
+/* Partículas (THREE.Points): vapor da panela, chama sob a boca do fogão e brilhos ao cravar um prato perfeito */
+const PART_TEX = tex(64, (g,s) => { const gr = g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2); gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0,0,s,s); });
+class ParticleSystem {
+  constructor(max, o){
+    this.max = max; this.head = 0;
+    this.pos = new Float32Array(max*3).fill(-1000); this.vel = new Float32Array(max*3);
+    this.age = new Float32Array(max); this.life = new Float32Array(max);
+    this.geo = new THREE.BufferGeometry(); this.geo.setAttribute('position', new THREE.BufferAttribute(this.pos, 3));
+    this.points = new THREE.Points(this.geo, new THREE.PointsMaterial({map:PART_TEX, color:o.color, size:o.size, opacity:o.opacity, transparent:true, depthWrite:false, blending:o.additive ? THREE.AdditiveBlending : THREE.NormalBlending}));
+    this.points.frustumCulled = false; scene.add(this.points);
+  }
+  emit(x, y, z, vx, vy, vz, life){ const k = this.head; this.head = (k + 1) % this.max; this.pos.set([x,y,z], k*3); this.vel.set([vx,vy,vz], k*3); this.age[k] = 0; this.life[k] = life; }
+  update(dt){
+    for (let k = 0; k < this.max; k++){
+      if (this.age[k] >= this.life[k]){ this.pos[k*3+1] = -1000; continue; }
+      this.age[k] += dt;
+      for (let a = 0; a < 3; a++) this.pos[k*3+a] += this.vel[k*3+a]*dt;
+    }
+    this.geo.attributes.position.needsUpdate = true;
+  }
+}
+const STEAM = new ParticleSystem(160, {color:0xF2F2F2, size:.12, opacity:.45});
+const FIRE = new ParticleSystem(200, {color:0xFF9A3C, size:.09, opacity:.9, additive:true});
+const SPARK = new ParticleSystem(160, {color:0xFFE07A, size:.07, opacity:1, additive:true});
+/* Brilhos de nota máxima: explosão curta de faíscas douradas sobre o prato */
+function sparkBurst(p){
+  for (let i = 0; i < 28; i++){ const a = Math.random()*Math.PI*2, s = .3 + Math.random()*.5;
+    SPARK.emit(p.x, p.y, p.z, Math.cos(a)*s, .6 + Math.random()*.9, Math.sin(a)*s, .8 + Math.random()*.6); }
+}
+const _pv = new THREE.Vector3();
+let fireAcc = 0, steamAcc = 0;
+ANIM.push((dt) => {
+  const M_ = MISSION;
+  if (dt > 0 && M_.active && M_.cooking && pan.visible && !RM.matches){
+    pan.getWorldPosition(_pv);
+    fireAcc += dt*45;
+    while (fireAcc >= 1){ fireAcc--; FIRE.emit(_pv.x + (Math.random()-.5)*.2, _pv.y - .06, _pv.z + (Math.random()-.5)*.2, 0, .3 + Math.random()*.3, 0, .35 + Math.random()*.25); }
+    if (M_.cookP > 40){
+      steamAcc += dt*14;
+      while (steamAcc >= 1){ steamAcc--; STEAM.emit(_pv.x + (Math.random()-.5)*.12, _pv.y + .08, _pv.z + (Math.random()-.5)*.12, (Math.random()-.5)*.05, .35 + Math.random()*.2, (Math.random()-.5)*.05, 1.6 + Math.random()*.8); }
+    }
+  }
+  STEAM.update(dt); FIRE.update(dt); SPARK.update(dt);
+});
 const mSprite = textSprite(.28); mSprite.position.set(27.0, 1.75, -.5); scene.add(mSprite); mSprite.visible = false;
 // prato carregado na mão (preso à câmera)
 const carryG = new THREE.Group(); carryG.position.set(.34, -.36, -.72); camera.add(carryG); carryG.visible = false;
+/* Prato montado em camadas: cada receita é uma pilha de ingredientes com materiais próprios (verniz, relevo, brilho).
+   Queimado: tudo sai carbonizado. */
 function dishModel(id, burnt){
-  const g = new THREE.Group(), dark = burnt ? M(0x2A1B14) : null;
-  CY(.17,.14,.02, MAT.white, 0, 0, 0, g, 20);
+  const g = new THREE.Group();
+  const food = (c, o) => burnt ? DARK_FOOD : PM(c, o);
+  CY(.17,.14,.02, PM(0xFFFFFF,{roughness:.15, clearcoat:.7}), 0, 0, 0, g, 24);
   if (id === 'burger'){
-    CY(.075,.075,.03, M(0xD9A35B), 0, .02, 0, g, 14); CY(.08,.08,.03, dark || M(0x6B3A22), 0, .05, 0, g, 14);
-    B(.15,.008,.15, M(0xF2B630), 0, .08, 0, g); SPH(.085, M(0x7BC86C), 0, .09, 0, g, 10).scale.y = .2;
-    mesh(new THREE.SphereGeometry(.078,14,8,0,Math.PI*2,0,Math.PI/2), M(0xD9A35B), 0, .1, 0, g);
+    // de baixo para cima: pão, alface, tomate, queijo derretido, carne grelhada e pão com gergelim
+    CY(.082,.08,.03, food(0xD9A35B,{roughness:.6}), 0, 0, 0, g, 28);
+    for (let k = 0; k < 9; k++){ const a = k/9*Math.PI*2; SPH(.034, food(0x6CBF4B,{roughness:.5}), Math.cos(a)*.062, .036, Math.sin(a)*.062, g, 8).scale.set(1.4,.35,1); }
+    CY(.072,.072,.012, food(0x7BCB55,{roughness:.5}), 0, .03, 0, g, 24);
+    CY(.07,.07,.014, food(0xE0392B,{roughness:.3, clearcoat:.6}), 0, .042, 0, g, 24);
+    CY(.086,.086,.01, food(0xF6B73C,{roughness:.2, clearcoat:.5}), 0, .056, 0, g, 28);
+    for (let k = 0; k < 5; k++) SPH(.012, food(0xF6B73C,{roughness:.2, clearcoat:.5}), Math.cos(k*1.3)*.08, .052, Math.sin(k*1.3)*.08, g, 8).scale.y = 1.8;
+    CY(.07,.07,.044, food(0x4E2A1A,{roughness:.8, bumpMap:FOOD_TEX.grill, bumpScale:1.5}), 0, .061, 0, g, 28);
+    mesh(new THREE.SphereGeometry(.085,28,14,0,Math.PI*2,0,Math.PI/2), food(0xD9A35B,{roughness:.35, clearcoat:.5}), 0, .105, 0, g).scale.y = .6;
+    for (let k = 0; k < 10; k++){ const a = k/10*Math.PI*2, r = .05; SPH(.0075, food(0xFFF6DC,{roughness:.5}), Math.cos(a)*r, .14, Math.sin(a)*r, g, 6).scale.set(1.6,.7,.9); }
   }
   if (id === 'pizza'){
-    CY(.15,.15,.02, dark || M(0xD99A4A), 0, .02, 0, g, 20); CY(.13,.13,.006, M(0xC2203A), 0, .04, 0, g, 20);
-    for (let k = 0; k < 6; k++) SPH(.022, M(0xF8F4E8), Math.cos(k)*.07, .045, Math.sin(k)*.07, g, 6);
-    for (let k = 0; k < 3; k++) SPH(.02, M(0x2F8F4E), Math.cos(k*2 + 1)*.04, .05, Math.sin(k*2 + 1)*.04, g, 6).scale.y = .3;
+    // massa com borda recheada, molho brilhante, mussarela derretida, manjericão e tomate
+    CY(.15,.15,.02, food(0xD99A4A,{roughness:.75, bumpMap:FOOD_TEX.crumb, bumpScale:1.2}), 0, 0, 0, g, 32);
+    mesh(new THREE.TorusGeometry(.14,.024,12,36), food(0xE8AE62,{roughness:.6, bumpMap:FOOD_TEX.crumb, bumpScale:2}), 0, .026, 0, g).rotation.x = Math.PI/2;
+    CY(.13,.13,.006, food(0xC2203A,{roughness:.15, clearcoat:1, clearcoatRoughness:.05}), 0, .02, 0, g, 32);
+    for (let k = 0; k < 8; k++){ const a = k/8*Math.PI*2 + (k % 2)*.3, r = .04 + (k % 3)*.03; SPH(.03, food(0xFFF8E6,{roughness:.3, clearcoat:.4}), Math.cos(a)*r, .03, Math.sin(a)*r, g, 10).scale.set(1.2,.45,1.1); }
+    for (let k = 0; k < 3; k++){ const a = k*2.1 + .4; SPH(.02, food(0x2F8F4E,{roughness:.5}), Math.cos(a)*.07, .036, Math.sin(a)*.07, g, 8).scale.set(1.4,.15,.8); }
+    for (let k = 0; k < 2; k++) CY(.018,.018,.004, food(0xE0392B,{roughness:.3, clearcoat:.5}), Math.cos(k*3 + 1)*.08, .034, Math.sin(k*3 + 1)*.08, g, 14);
   }
   if (id === 'salmao'){
-    CY(.12,.12,.006, M(0x4C9A3A), 0, .02, 0, g, 18); B(.16,.05,.09, dark || M(0xD9784A), 0, .027, 0, g);
-    for (let k = 0; k < 3; k++) SPH(.03, M(0xE8C77A), -.09 + k*.05, .03, .08, g, 8);
-    SPH(.02, M(0xE8E05A), .1, .03, -.06, g, 6);
+    // molho de ervas refletivo, posta com marcas de grelha, legumes e limão
+    CY(.125,.125,.004, food(0x8DBE4A,{roughness:.08, clearcoat:1, clearcoatRoughness:.05}), 0, .02, 0, g, 28);
+    B(.16,.045,.09, food(0xF08A6A,{map:FOOD_TEX.salmon, roughness:.35, clearcoat:.4}), 0, .024, 0, g);
+    for (let k = 0; k < 3; k++) SPH(.02, food(0x4C9A3A,{roughness:.6}), -.04 + k*.04, .08, .02, g, 8).scale.set(1.5,.25,.8);
+    SPH(.03, food(0xD9B36A,{roughness:.6, bumpMap:FOOD_TEX.crumb, bumpScale:1}), -.07, .03, -.07, g, 10).scale.set(1.4,.8,1.2);
+    SPH(.03, food(0xD9B36A,{roughness:.6, bumpMap:FOOD_TEX.crumb, bumpScale:1}), -.05, .03, .07, g, 10).scale.set(1.4,.8,1.2);
+    CY(.008,.011,.03, food(0x9AC46A,{roughness:.5}), .1, .02, .06, g, 6);
+    for (let k = 0; k < 4; k++){ const a = k*1.57; SPH(.02, food(0x3E8E3A,{roughness:.6}), .1 + Math.cos(a)*.02, .055, .06 + Math.sin(a)*.02, g, 8); }
+    CY(.018,.018,.008, food(0xE8792A,{roughness:.5}), -.1, .02, -.07, g, 14);
+    CY(.024,.024,.008, food(0xF4E26A,{roughness:.3, clearcoat:.5}), .1, .02, -.07, g, 16);
   }
   if (id === 'risoto'){
-    mesh(new THREE.SphereGeometry(.11,16,8,0,Math.PI*2,0,Math.PI/2), dark || M(0xF1E3B0), 0, .02, 0, g).scale.y = .45;
-    for (let k = 0; k < 4; k++) mesh(new THREE.TorusGeometry(.025,.011,6,10,Math.PI*1.4), M(0xF2895A), Math.cos(k*1.6)*.05, .06, Math.sin(k*1.6)*.05, g).rotation.x = -Math.PI/2;
-    SPH(.02, M(0x4C9A3A), 0, .075, 0, g, 6);
+    // arroz cremoso com verniz de manteiga, camarões e ervas
+    mesh(new THREE.SphereGeometry(.11,24,12,0,Math.PI*2,0,Math.PI/2), food(0xF1E3B0,{roughness:.45, clearcoat:.3}), 0, .02, 0, g).scale.y = .45;
+    for (let k = 0; k < 5; k++) mesh(new THREE.TorusGeometry(.025,.011,8,12,Math.PI*1.4), food(0xF2895A,{roughness:.35, clearcoat:.4}), Math.cos(k*1.25)*.05, .06, Math.sin(k*1.25)*.05, g).rotation.x = -Math.PI/2;
+    SPH(.02, food(0x4C9A3A,{roughness:.6}), 0, .075, 0, g, 8);
   }
   g.traverse(o => { if (o.isMesh) o.castShadow = false; });
   return g;
@@ -1751,7 +1882,20 @@ ANIM.push((dt, t) => {
   excl.visible = !MISSION.active; excl.position.y = 3.05 + (RM.matches ? 0 : Math.sin(t*3)*.08);
   maria.tag.userData.set(`Chef Maria · amizade ${G.friend}`, 'rgba(194,69,58,.95)', '#FFFFFF');
 });
-const mmss = s => `${Math.floor(Math.max(0,s)/60)}:${pad2(Math.floor(Math.max(0,s) % 60))}`;
+/* GLTF / Mixamo: a Chef Maria pode trocar o boneco procedural por um modelo rigado com animação do Mixamo.
+   Sem arquivo configurado, ou se o carregamento falhar, ela segue com o boneco procedural. */
+const MIXAMO = {chef: null};   // ex.: 'models/chef_idle.glb' (exportado do Mixamo em glTF/GLB, com o clipe de idle)
+const MIXERS = [];
+if (MIXAMO.chef && typeof THREE.GLTFLoader === 'function'){
+  new THREE.GLTFLoader().load(MIXAMO.chef, gltf => {
+    maria.body.visible = false;
+    gltf.scene.traverse(o => { o.userData.iaRoot = maria.g; if (o.isMesh) o.castShadow = true; });
+    maria.g.add(gltf.scene);
+    if (gltf.animations.length){ const mx = new THREE.AnimationMixer(gltf.scene); mx.clipAction(gltf.animations[0]).play(); MIXERS.push(mx); }
+  }, undefined, () => { /* sem o arquivo, a Chef Maria continua com o boneco procedural */ });
+}
+ANIM.push((dt) => MIXERS.forEach(m => m.update(dt)));
+const mmss = s =>`${Math.floor(Math.max(0,s)/60)}:${pad2(Math.floor(Math.max(0,s) % 60))}`;
 function openChef(){ pcOpen = true; $('chef').hidden = false; renderChef(); if (controls.isLocked) controls.unlock(); }
 $('chefClose').onclick = () => closePC(false);
 function renderChef(){
@@ -1899,6 +2043,7 @@ function rateMission(){
   const frac = M_.elapsed / r.limit, time = frac <= .55 ? 1 : Math.max(0, 1 - (frac - .55)/.45);
   const total = .3*ing + .15*chop + .3*cook + .25*time;
   const stars = total >= .9 ? 5 : Math.max(1, Math.min(4, Math.round(total*5)));
+  if (stars === 5) sparkBurst(M_.table.g.localToWorld(new THREE.Vector3(-.45, 1.05, 0)));
   const money = Math.round(r.base*(.4 + .15*stars)*(G.upg.floor ? 1.15 : 1)) + (stars === 5 ? r.bonus : 0);
   addMoney(money, `${r.name} · ${stars} estrela(s)`); SFX.buy();
   addRep({5:5, 4:3, 3:1, 2:-1, 1:-3}[stars]);
@@ -1948,12 +2093,10 @@ const RAW = new THREE.Color(), DONE = new THREE.Color(), BURN = new THREE.Color(
 ANIM.push((dt, t) => {
   if (knife.userData.t > 0){ knife.userData.t -= Math.max(dt, .016); knife.rotation.z = Math.sin(knife.userData.t*25)*.5; } else knife.rotation.z = 0;
   const M_ = MISSION;
-  panFlames.forEach((f,i) => { f.visible = !!(M_.active && M_.cooking); if (f.visible && !RM.matches) f.scale.y = .7 + .6*Math.abs(Math.sin(t*15 + i)); });
   if (!pan.visible || !M_.active){ mSprite.visible = false; return; }
   const r = M_.recipe, p = M_.cookP, c = r.cook;
   RAW.setHex(r.raw); DONE.setHex(r.done);
   if (p <= c.ideal) panFood.material.color.copy(RAW).lerp(DONE, p/c.ideal); else panFood.material.color.copy(DONE).lerp(BURN, (p - c.ideal)/(100 - c.ideal));
-  smoke.forEach((s,i) => { s.visible = p > 80 && !RM.matches; if (s.visible){ const ph = (t*.6 + i/smoke.length) % 1; s.position.set(Math.sin(i*2)*.06, .1 + ph*.6, Math.cos(i*3)*.06); s.material.opacity = .5*(1 - ph); s.scale.setScalar(.6 + ph); } });
   mSprite.visible = true;
   const st = M_.burnt ? 'queimado' : p < c.ideal - c.tol ? 'cru' : p <= c.ideal + c.tol ? 'no ponto!' : 'passando';
   mSprite.userData.set(M_.cooking ? `${Math.round(p)}% · ${st}` : `Pronto · ${st}`, st === 'no ponto!' ? 'rgba(43,179,177,.95)' : st === 'cru' ? 'rgba(216,166,74,.95)' : 'rgba(232,106,90,.95)', '#FFFFFF');
@@ -1988,7 +2131,654 @@ function renderMission(){
 }
 
 /* ============================================================
-   LOOP PRINCIPAL
+   COMPUTADOR DA RECEPÇÃO · finanças, equipe, melhorias, filiais e parceiros
+   ============================================================ */
+let pcOpen = false, pcTab = 'fin';
+const PC_TABS = [['fin','Finanças'], ['staff','Equipe'], ['upg','Melhorias'], ['branch','Filiais'], ['partner','Parceiros']];
+function openPC(){
+  pcOpen = true; $('pc').hidden = false; renderPC();
+  if (controls.isLocked) controls.unlock();
+}
+function closePC(fromKey){
+  pcOpen = false; $('pc').hidden = true; $('chef').hidden = true; $('ficha').hidden = true; fichaGuest = null;
+  if (dragMode) return;
+  if (fromKey){ pauseOverlay(); return; }
+  try { controls.lock(); } catch(e){ pauseOverlay(); }
+}
+function pauseOverlay(){ $('start').hidden = false; $('play').textContent = 'Clique para continuar'; G.paused = true; }
+function renderPC(){
+  $('pcTabs').innerHTML = PC_TABS.map(([k,l]) => `<button data-tab="${k}" role="tab" aria-selected="${pcTab === k}">${l}</button>`).join('');
+  $('pcTabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { pcTab = b.dataset.tab; renderPC(); });
+  const view = {fin:finView, staff:staffView, upg:upgView, branch:branchView, partner:partnerView}[pcTab];
+  $('pcBody').innerHTML = view();
+  $('pcBody').querySelectorAll('[data-hire]').forEach(b => b.onclick = () => hire(b.dataset.hire));
+  $('pcBody').querySelectorAll('[data-evolve]').forEach(b => b.onclick = () => evolve(b.dataset.evolve));
+  $('pcBody').querySelectorAll('[data-room]').forEach(b => b.onclick = () => { upgradeRoom(ROOMS.find(r => r.id === b.dataset.room)); renderPC(); });
+  $('pcBody').querySelectorAll('[data-upg]').forEach(b => b.onclick = () => buyUpgrade(b.dataset.upg));
+  $('pcBody').querySelectorAll('[data-branch]').forEach(b => b.onclick = () => buyBranch(b.dataset.branch));
+  $('pcBody').querySelectorAll('[data-partner]').forEach(b => b.onclick = () => buyPartner(b.dataset.partner));
+}
+function finView(){
+  const rows = G.log.slice(0, 14).map(l => `<tr><td>Dia ${l.day} · ${l.time}</td><td>${l.why}</td><td class="num ${l.v >= 0 ? 'pos' : 'neg'}">${l.v >= 0 ? '+' : '−'}${fmt(Math.abs(l.v))}</td></tr>`).join('');
+  return `<div class="kpis">
+      <div class="kpi"><span>Caixa</span><b>${fmt(G.money)}</b></div>
+      <div class="kpi"><span>Receita hoje</span><b class="pos">${fmt(G.incomeToday)}</b></div>
+      <div class="kpi"><span>Despesas hoje</span><b class="neg">${fmt(G.expenseToday)}</b></div>
+      <div class="kpi"><span>Salários / dia</span><b>${fmt(wagesPerDay())}</b></div>
+      <div class="kpi"><span>Reputação</span><b>${starsNow().toFixed(1).replace('.', ',')}/10 ★</b></div>
+      <div class="kpi"><span>Refeições servidas</span><b>${G.served}</b></div></div>
+    <table><thead><tr><th>Quando</th><th>Lançamento</th><th class="num">Valor</th></tr></thead><tbody>${rows || '<tr><td colspan="3">Nenhum lançamento ainda. Abra a ficha de um hóspede no balcão.</td></tr>'}</tbody></table>`;
+}
+function staffView(){
+  return '<div class="staff">' + Object.entries(ROLES).map(([k,r]) => {
+    const full = G.staff[k] >= r.max, poor = G.money < r.cost;
+    let lv = '', evo = '';
+    if (r.levels){
+      const L = G.staffLv[k];
+      lv = `<span class="lv">Nível ${L}: ${r.levels[L - 1].txt}</span>`;
+      evo = L < r.levels.length ? `<button data-evolve="${k}" ${G.money < r.levels[L].cost ? 'disabled' : ''}>Evoluir para Nv ${L + 1} · ${fmt(r.levels[L].cost)}</button>` : '<button disabled>Nível máximo</button>';
+    }
+    return `<div class="role"><h3>${r.name}</h3><p>${r.desc}</p>${lv}<span class="meta">Salário ${fmt(r.wage)}/dia · contratados ${G.staff[k]}/${r.max}</span>
+      <div class="btns"><button data-hire="${k}" ${full || poor ? 'disabled' : ''}>${full ? 'Equipe completa' : 'Contratar · ' + fmt(r.cost)}</button>${evo}</div></div>`;
+  }).join('') + '</div>';
+}
+function upgView(){
+  const rooms = ROOMS.map(room => {
+    const gate = gateOf(room); let btn, note;
+    if (!room.owned){ note = 'Em obras'; btn = `<button data-room="${room.id}" ${G.money < PRICE[1] || gate ? 'disabled' : ''}>Comprar · ${fmt(PRICE[1])}</button>`; }
+    else if (room.level >= 3){ note = LEVEL[3]; btn = '<button disabled>Nível máximo</button>'; }
+    else {
+      const busy = room.guest || room.state !== 'free', c = PRICE[room.level + 1];
+      note = LEVEL[room.level] + (busy ? (room.guest ? ' · ocupado agora' : ' · precisa de limpeza antes da obra') : '');
+      btn = `<button data-room="${room.id}" ${busy || gate || G.money < c ? 'disabled' : ''}>Evoluir para ${LEVEL[room.level + 1]} · ${fmt(c)}</button>`;
+    }
+    return `<div class="role"><h3>Quarto ${room.id}</h3><p>${note}${gate ? ' · ' + gate : ''} · diária ${fmt(RATE[Math.max(1, room.level)])}</p><div class="btns">${btn}</div></div>`;
+  }).join('');
+  const hotel = Object.entries(UPGRADES).map(([k,u]) => `<div class="role"><h3>${u.name}</h3><p>${u.desc}</p><div class="btns">${G.upg[k] ? '<button disabled>Concluído</button>' : `<button data-upg="${k}" ${G.money < u.cost ? 'disabled' : ''}>Comprar · ${fmt(u.cost)}</button>`}</div></div>`).join('');
+  return `<p class="sub">Quartos · etapas de reforma</p><div class="staff">${rooms}</div><p class="sub" style="margin-top:16px">Hotel</p><div class="staff">${hotel}</div>`;
+}
+/* Filiais: exigem Hotel Plus (10★) na filial anterior e o valor em caixa. Comprar a filial já a ativa. */
+function branchView(){
+  return '<p class="sub">Menu de Filiais & Expansão Global</p><div class="staff">' + BRANCHES.map(b => {
+    const owned = G.owned.includes(b.id), active = G.branch === b.id, prev = b.prev ? BRANCHES.find(x => x.id === b.prev).name : null;
+    const plusOk = !b.prev || !!G.plus[b.prev], money = G.money >= b.cost;
+    const req = b.prev ? `Hotel Plus (10★) em ${prev} + ${fmt(b.cost)}` : 'Inicial';
+    let btn;
+    if (active) btn = '<button disabled>Filial ativa</button>';
+    else if (owned) btn = `<button data-branch="${b.id}">Ativar filial</button>`;
+    else btn = `<button data-branch="${b.id}" ${plusOk && money ? '' : 'disabled'}>${plusOk ? 'Adquirir e ativar · ' + fmt(b.cost) : 'Bloqueada'}</button>`;
+    return `<div class="role"><h3>${b.name}</h3><p>${b.desc}</p><span class="meta">${req}</span><div class="btns">${btn}</div></div>`;
+  }).join('') + '</div>';
+}
+function partnerView(){
+  return '<p class="sub">Parceiros Urbanos</p><div class="staff">' + PARTNERS.map(p => {
+    const bought = p.id === 'supplier' && G.partners.supplier;
+    const busy = p.id === 'ads' && G.partners.adsT > 0;
+    let btn = bought ? '<button disabled>Contratado</button>' : busy ? `<button disabled>Ativa · ${mmss(G.partners.adsT)}</button>` : `<button data-partner="${p.id}" ${G.money < p.cost ? 'disabled' : ''}>Contratar · ${fmt(p.cost)}</button>`;
+    return `<div class="role"><h3>${p.name}</h3><p>${p.desc}</p><div class="btns">${btn}</div></div>`;
+  }).join('') + '</div>';
+}
+function buyBranch(id){
+  const b = BRANCHES.find(x => x.id === id), prev = b.prev;
+  if (!G.owned.includes(id)){
+    if (prev && !G.plus[prev]){ SFX.error(); toast('Chegue a Hotel Plus (10★) na filial anterior', 'bad'); return; }
+    if (G.money < b.cost){ SFX.error(); toast(`Faltam ${fmt(b.cost - G.money)} para esta filial`, 'bad'); return; }
+    addMoney(-b.cost, `Filial: ${b.name}`); G.owned.push(id); SFX.buy();
+  }
+  G.branch = id; WORLD.applyBranch(b);
+  toast(`${b.name} ativa`, 'good'); renderPC();
+}
+function buyPartner(id){
+  const p = PARTNERS.find(x => x.id === id);
+  if (G.money < p.cost){ SFX.error(); toast(`Faltam ${fmt(p.cost - G.money)} para: ${p.name}`, 'bad'); return; }
+  addMoney(-p.cost, p.name); SFX.buy();
+  if (id === 'ads') G.partners.adsT = 180;
+  if (id === 'supplier') G.partners.supplier = true;
+  toast(`${p.name} contratada`, 'good'); renderPC();
+}
+$('pcClose').onclick = () => closePC(false);
+$('fichaClose').onclick = () => closePC(false);
+
+/* ============================================================
+   FICHA DO CLIENTE · tipo, orçamento, exigência, estadia e escolha do quarto
+   ============================================================ */
+function openFicha(n){
+  if (!n || !n.inLine) return;
+  fichaGuest = n; pcOpen = true; $('ficha').hidden = false; renderFicha();
+  if (controls.isLocked) controls.unlock();
+}
+function renderFicha(){
+  const n = fichaGuest; if (!n) return;
+  const p = n.profile, rooms = roomsForGuest();
+  const cards = rooms.length ? rooms.map(r => {
+    const rv = reviewOf(p, r), tone = rv.q === 'perfeito' ? 'text-lagoon' : rv.q === 'acima' ? 'text-brass' : 'text-coral';
+    return `<div class="role"><h3>Quarto ${r.id} · ${LEVEL[r.level]} · ${ROOM_STARS[r.level]}★</h3>
+      <p class="${tone}">${rv.txt} · ${rv.pay >= 0 ? '+' : '−'}${fmt(Math.abs(rv.pay))} por ${p.nights} noite${p.nights > 1 ? 's' : ''}${rv.rep ? ` · reputação ${rv.rep > 0 ? '+' : ''}${(rv.rep/10).toFixed(1).replace('.', ',')}★` : ''}</p>
+      <div class="btns"><button data-assign="${r.id}">${r.state === 'dirty' ? 'Check-in no quarto sujo' : 'Fazer check-in'}</button></div></div>`;
+  }).join('') : '<p class="say">Nenhum quarto comprado está disponível agora. Compre ou limpe um quarto.</p>';
+  $('fichaBody').innerHTML = `<div class="kpis">
+      <div class="kpi"><span>Tipo</span><b>${p.typeName}</b></div>
+      <div class="kpi"><span>Orçamento máximo</span><b>${fmt(p.budget)}/noite</b></div>
+      <div class="kpi"><span>Exigência de conforto</span><b>${p.exig}% · ${(p.exig/10).toFixed(1).replace('.', ',')}★</b></div>
+      <div class="kpi"><span>Estadia</span><b>${p.nights} noite${p.nights > 1 ? 's' : ''}</b></div></div>
+    <p class="say"><b>${p.name}</b> · ${PERSONAS[p.persona].name} · pedido especial: ${p.request || 'nenhum'}</p>
+    <p class="sub">Fila · posição ${G.queue.indexOf(n) + 1}</p>
+    <div class="staff">${cards}</div>`;
+  $('fichaBody').querySelectorAll('[data-assign]').forEach(b => b.onclick = () => {
+    if (checkIn(n, ROOMS.find(r => r.id === b.dataset.assign), false)) closePC(false);
+  });
+}
+
+/* ============================================================
+   MANUTENÇÃO · crises (goteira na suíte, cano no banheiro, lâmpada no corredor)
+   A cada 45 s há 40% de chance de uma crise. Conserto: segure E ou o botão do mouse
+   com a agulha na faixa verde por 3 s. Crise aberta corrói a reputação continuamente.
+   ============================================================ */
+let mouseHeld = false;
+addEventListener('mousedown', e => { if (e.button === 0) mouseHeld = true; });
+addEventListener('mouseup', () => { mouseHeld = false; });
+class CrisisSystem {
+  constructor(){ this.list = []; this.rollT = 45; this.repair = null; }
+  tick(dt){
+    this.rollT -= dt;
+    if (this.rollT <= 0){ this.rollT = 45; if (Math.random() < .4 && this.list.length < 2) this.spawn(); }
+    for (const c of this.list) addRep(-.04*dt);
+    if (this.repair) this.updateRepair(dt);
+  }
+  spawn(){
+    const owned = ROOMS.concat(UPPER).filter(r => r.owned), r = pick(owned);
+    const L = r.leak || {x:1.5, z:-4.5}, P = r.pipe || {x:-3.2, z:-1.6};   // pontos de cada suíte (locais ao grupo)
+    const upHall = Math.random() < .5;   // lâmpada: corredor do térreo ou hall do 2º andar
+    const kinds = [
+      {id:'leak', name:`Goteira na suíte ${r.id}`, at:() => r.group.localToWorld(new THREE.Vector3(L.x, 0, L.z))},
+      {id:'pipe', name:`Cano estourado no banheiro ${r.id}`, at:() => r.group.localToWorld(new THREE.Vector3(P.x, 0, P.z))},
+      {id:'bulb', name: upHall ? 'Lâmpada queimada no corredor do 2º andar' : 'Lâmpada queimada no corredor', at:() => upHall ? new THREE.Vector3(0, UP_Y, 3.5) : new THREE.Vector3(-16.5, 0, .8)},
+    ];
+    const k = pick(kinds), g = new THREE.Group();
+    g.position.copy(k.at()); scene.add(g);
+    const c = {id:k.id, name:k.name, g, parts:[], bulb:null, tag:textSprite(.3)};
+    c.tag.position.y = 2.9; g.add(c.tag); c.tag.userData.set('⚠ ' + k.name, 'rgba(232,106,90,.95)', '#FFFFFF');
+    this.buildProp(c);
+    interact(g, {label:() => `[E] Consertar · ${k.name}`, ok:() => true, action:() => this.startRepair(c)});
+    this.list.push(c); SFX.error();
+    toast(`Emergência: ${k.name} · conserte antes que os hóspedes reclamem`, 'bad');
+  }
+  buildProp(c){
+    if (c.id === 'leak'){
+      const p = new THREE.Mesh(new THREE.CircleGeometry(.6, 24), new THREE.MeshStandardMaterial({color:0x4FA3D9, transparent:true, opacity:.65, roughness:.1}));
+      p.rotation.x = -Math.PI/2; p.position.y = .02; c.g.add(p);
+      for (let i = 0; i < 4; i++) c.parts.push(SPH(.05, M(0x6FC3F0), Math.cos(i*1.6)*.3, 2.2, Math.sin(i*1.6)*.3, c.g, 8));
+    }
+    if (c.id === 'pipe'){
+      CY(.08,.08,1.6, MAT.gold, 0, 0, 0, c.g, 10); B(.5,.1,.5, M(0xD8D2C4), 0, 0, 0, c.g);
+      SPH(.14, M(0xC2453A,{roughness:.5}), 0, 1.7, 0, c.g, 12);
+      for (let i = 0; i < 3; i++) c.parts.push(SPH(.05, new THREE.MeshBasicMaterial({color:0xFFFFFF, transparent:true, opacity:.7}), .15 + i*.1, 1.9 + i*.2, 0, c.g, 8));
+    }
+    if (c.id === 'bulb'){
+      CY(.02,.02,2.4, MAT.steelDark, 0, 0, 0, c.g, 6); c.bulb = SPH(.16, new THREE.MeshBasicMaterial({color:0xFFF1C9}), 0, 2.5, 0, c.g, 12);
+    }
+  }
+  startRepair(c){
+    if (this.repair) return;
+    this.repair = {c, pos:0, dir:1, speed:1.1 + Math.random()*.6, zoneC:.2 + Math.random()*.6, zoneW:.22, progress:0};
+    $('repTitle').textContent = 'Conserto · ' + c.name;
+    $('repair').hidden = false;
+  }
+  updateRepair(dt){
+    const R = this.repair;
+    R.pos += R.dir*R.speed*dt;
+    if (R.pos >= 1){ R.pos = 1; R.dir = -1; } if (R.pos <= 0){ R.pos = 0; R.dir = 1; }
+    const inZone = Math.abs(R.pos - R.zoneC) <= R.zoneW/2;
+    if ((keys.KeyE || mouseHeld) && inZone) R.progress += dt; else R.progress = Math.max(0, R.progress - dt*.5);
+    $('repNeedle').style.left = (R.pos*100) + '%';
+    $('repZone').style.left = ((R.zoneC - R.zoneW/2)*100) + '%'; $('repZone').style.width = (R.zoneW*100) + '%';
+    $('repFill').style.width = Math.min(100, R.progress/3*100) + '%';
+    if (R.progress >= 3) this.finish(R.c);
+  }
+  finish(c){
+    this.cancelRepair();
+    addMoney(40, `Conserto: ${c.name}`); addRep(2); SFX.coin();
+    toast(`${c.name} consertado · +$40 e reputação`, 'good');
+    this.remove(c);
+  }
+  cancelRepair(){ this.repair = null; $('repair').hidden = true; }
+  remove(c){
+    const i = this.list.indexOf(c); if (i >= 0) this.list.splice(i, 1);
+    scene.remove(c.g); unregister(c.g); c.g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  }
+}
+const CRISES = new CrisisSystem();
+ANIM.push((dt, t) => CRISES.list.forEach(c => {
+  c.parts.forEach((p,i) => { if (p.userData.y0 === undefined) p.userData.y0 = p.position.y; p.position.y = p.userData.y0 + Math.sin(t*4 + i)*.15; });
+  if (c.bulb) c.bulb.visible = RM.matches || Math.sin(t*17) > -.3;
+}));
+addEventListener('keydown', e => { if (e.code === 'Escape' && CRISES.repair) CRISES.cancelRepair(); });
+
+/* ============================================================
+   MUNDO · reforma por etapa (visual) e tema da filial ativa
+   ============================================================ */
+/* ============================================================
+   PERSONAS · hóspedes e equipe em primitivas 3D, com as cores e acessórios das descrições
+   Cada decor(b, g) recebe o grupo do corpo (b, origem nos pés) e o grupo do NPC (g)
+   ============================================================ */
+const PERSONA_POOL = {
+  mochileiro:['mochileira','tropical','surfista','artista','atleta','jardineiro','fotografo','geek','astronoma','bombeiro','musica','encanador','mergulhadora'],
+  familia:['familia'], executivo:['executiva'], vip:['vip'],
+};
+const PERSONAS = {
+  tropical:{name:'Turista Tropical', shirt:0xE8502E, pants:0xF2C230, decor(b){
+    CY(.3,.3,.03, M(0xD8B26A), 0, 1.9, 0, b, 16); CY(.16,.17,.12, M(0xD8B26A), 0, 1.91, 0, b, 14);
+    B(.44,.1,.02, M(0xF2C230), 0, 1.0, .215, b); B(.12,.08,.07, MAT.black, -.12, 1.05, .25, b);
+  }},
+  mochileira:{name:'Mochileira Eco-Turista', shirt:0x8F8A5A, pants:0x6E6A4A, decor(b){
+    B(.36,.6,.2, M(0x5A6B3A), 0, .95, -.27, b); B(.14,.12,.06, M(0x3A4A2A), 0, 1.3, -.37, b);
+  }},
+  familia:{name:'Mãe & Filha', shirt:0xF59AB6, pants:0xF59AB6, decor(b){
+    CY(.2,.3,.45, M(0xF59AB6), 0, .4, 0, b, 14);
+    SPH(.11, M(0xA9742E), .28, .92, .22, b, 10); SPH(.05, M(0xA9742E), .2, 1.03, .22, b, 8); SPH(.05, M(0xA9742E), .36, 1.03, .22, b, 8);
+  }},
+  executiva:{name:'Executiva', shirt:0xFFFFFF, pants:0x1F2D4D, decor(b, g){
+    B(.44,.56,.26, M(0x1F2D4D), 0, .85, 0, b);
+    B(.3,.42,.18, M(0xC9CED6,{metalness:.6, roughness:.3}), .45, 0, .14, g);
+    mesh(new THREE.CylinderGeometry(.015,.015,.5,6), MAT.steelDark, .45, .42, .14, g, false);
+  }},
+  vip:{name:'Cliente Sênior VIP', shirt:0xF1E6CC, pants:0xE8DCC0, decor(b, g){
+    B(.44,.56,.26, M(0xF1E6CC), 0, .85, 0, b);
+    B(.1,.03,.02, MAT.black, -.06, 1.73, .175, b); B(.1,.03,.02, MAT.black, .06, 1.73, .175, b);
+    mesh(new THREE.CylinderGeometry(.018,.018,1.0,6), MAT.black, .42, .5, .15, g);
+    SPH(.04, MAT.black, .42, 1.03, .15, g, 8);
+  }},
+  surfista:{name:'Surfista', shirt:0x2BB3B1, pants:0xF2A93B, decor(b, g){
+    B(.1,.03,1.5, M(0xF59AB6), .48, .95, .1, g);
+  }},
+  artista:{name:'Artista / Pintor', shirt:0x3D5A80, pants:0x3B3B3B, decor(b){
+    B(.36,.6,.03, M(0xE8E2D6,{roughness:1}), 0, .8, .23, b);
+    SPH(.03, M(0xE86A5A), .08, .95, .25, b, 6); SPH(.03, M(0x3D7CC9), -.1, .7, .25, b, 6); SPH(.03, M(0xF5C542), .02, .6, .25, b, 6);
+    B(.22,.03,.3, M(0xF4EFE2), .3, .66, .2, b);
+  }},
+  atleta:{name:'Atleta / Yoga', shirt:0xE86A5A, pants:0x2A2A2A, decor(b){
+    const mat = mesh(new THREE.CylinderGeometry(.09,.09,.6,10), M(0x6B3A9E), 0, 1.2, -.28, b); mat.rotation.z = Math.PI/2;
+    B(.22,.1,.02, M(0x2BB3B1), 0, 1.02, .215, b);
+  }},
+  jardineiro:{name:'Jardineiro / Botânico', shirt:0x7A9A4A, pants:0xB8A884, decor(b){
+    CY(.34,.34,.03, M(0xD8C9A0), 0, 1.9, 0, b, 16); CY(.16,.17,.12, M(0xD8C9A0), 0, 1.91, 0, b, 14);
+    CY(.1,.08,.14, M(0xB56A3E), .3, .7, .18, b, 10); SPH(.11, M(0x4C9A3A), .3, .86, .18, b, 10);
+  }},
+  fotografo:{name:'Fotógrafo / Cinegrafista', shirt:0xD9C8A6, pants:0x4A4A3A, decor(b){
+    B(.44,.5,.26, M(0x5A5A3A), 0, .9, 0, b);
+    B(.1,.08,.03, M(0x4A4A2A), -.12, .95, .27, b); B(.1,.08,.03, M(0x4A4A2A), .12, .95, .27, b);
+    B(.18,.13,.12, MAT.black, .1, 1.1, .27, b);
+    mesh(new THREE.CylinderGeometry(.04,.05,.06,10), M(0x222222), .1, 1.1, .35, b).rotation.x = Math.PI/2;
+  }},
+  geek:{name:'Mestre de Jogos / Geek', shirt:0x8A5A34, pants:0x3A3A3A, decor(b){
+    B(.34,.01,.26, M(0xF0E6C8), .3, .7, .2, b); SPH(.06, M(0xE8E05A), -.3, .75, .18, b, 6);
+    B(.2,.03,.02, MAT.black, 0, 1.73, .17, b);
+  }},
+  astronoma:{name:'Astrônoma', shirt:0x3A4A6A, pants:0x2A3450, decor(b, g){
+    B(.46,.6,.28, M(0x3A4A6A), 0, .8, 0, b);
+    mesh(new THREE.CylinderGeometry(.05,.07,.7,8), M(0xD8D2C4), .48, 1.0, .1, g).rotation.z = .3;
+    CY(.02,.02,.9, MAT.steelDark, .48, 0, .1, g, 6);
+  }},
+  bombeiro:{name:'Bombeiro', shirt:0xD9482B, pants:0xB23A1F, decor(b){
+    B(.44,.06,.27, M(0xF2F2F2), 0, 1.0, 0, b);
+    CY(.22,.22,.08, M(0xF2C230), 0, 1.84, 0, b, 16); SPH(.2, M(0xF2C230), 0, 1.88, 0, b, 12);
+  }},
+  musica:{name:'Músicista Boho', shirt:0xD9A35B, pants:0x7A5A3A, decor(b){
+    CY(.22,.22,.07, M(0x8A5A34), -.28, .55, -.25, b, 14); B(.05,.5,.03, M(0x5A3A20), -.28, .6, -.33, b);
+    B(.36,.04,.36, M(0xE86A5A), 0, 1.84, 0, b);
+  }},
+  encanador:{name:'Carpinteiro / Encanador', shirt:0x2F6FB0, pants:0x2F6FB0, decor(b, g){
+    B(.44,.1,.1, MAT.black, 0, .8, .23, b); B(.1,.12,.22, M(0xC2453A), .32, .7, .12, b);
+    B(.3,.14,.2, M(0x8A5A34), -.4, 0, .2, g);
+  }},
+  mergulhadora:{name:'Mergulhadora', shirt:0x1E2A44, pants:0x1E2A44, decor(b){
+    B(.26,.1,.08, M(0x3BA9C9,{transparent:true, opacity:.6}), 0, 1.74, .17, b); B(.12,.1,.1, MAT.black, .2, 1.0, .25, b);
+  }},
+};
+const decorateClient = (n, persona) => PERSONAS[persona].decor(n.body, n.g);
+
+/* ============================================================
+   FACHADA EXTERNA · Ruína (tijolos, tábuas e entorno sujo), Moderno (bege e vidro)
+   e Resort Plus 5 Estrelas (mármore, colunas, ouro, tapete e fonte)
+   ============================================================ */
+const FACADE = new THREE.Group(); scene.add(FACADE);
+const facadeSolids = [];
+const FX = {
+  brick: tex(256, (g,s) => {
+    g.fillStyle = '#7E4E3A'; g.fillRect(0,0,s,s);
+    for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++){ g.fillStyle = ['#9C6A4E','#86523A','#A8785A'][(r + c) % 3]; g.fillRect(c*64 + (r % 2)*32 + 2, r*32 + 2, 60, 28); }
+    seed = 41; noise(g, s, s, .15, 2500);
+    g.fillStyle = 'rgba(200,200,190,.4)'; for (let i = 0; i < 9; i++) g.fillRect(rnd()*s, rnd()*s, 40 + rnd()*60, 20 + rnd()*40);
+  }),
+  dirt: tex(256, (g,s) => { g.fillStyle = '#7A5A3A'; g.fillRect(0,0,s,s); seed = 42; noise(g, s, s, .3, 4000); }),
+};
+function buildFacade(stage){
+  while (FACADE.children.length){ const c = FACADE.children.pop(); c.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
+  facadeSolids.splice(0).forEach(s => { const i = solids.indexOf(s); if (i >= 0) solids.splice(i, 1); });
+  EXTERIOR.forEach(o => { o.visible = stage > 0; });
+  const add = m => { FACADE.add(m); return m; };
+  const plane = (w, h, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat); m.position.set(x, y, z); return add(m); };
+  const ground = (w, d, mat, x, z, y = .03) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), mat); m.rotation.x = -Math.PI/2; m.position.set(x, y, z); m.receiveShadow = true; return add(m); };
+  const box = (w, h, d, mat, x, yb, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, yb + h/2, z); m.castShadow = m.receiveShadow = true; return add(m); };
+  const WIN = [-5.5, 5.5];
+  // revestimento da fachada em três faixas, deixando a abertura da porta (x -1.5..1.5, até y 3.2)
+  const slabs = mat => { plane(6.5, 5, mat, -4.75, 2.5, 6.13); plane(6.5, 5, mat, 4.75, 2.5, 6.13); plane(3, 1.8, mat, 0, 4.1, 6.13); };
+
+  if (stage === 0){
+    slabs(new THREE.MeshStandardMaterial({map:rep(FX.brick, 2, 1), color:0x8C7A6A, roughness:1}));
+    for (const x of WIN){
+      plane(1.6, 1.6, new THREE.MeshStandardMaterial({map:TEX.woodPanel, roughness:.9}), x, 2.6, 6.14);
+      box(1.8, .08, .06, MAT.woodDark, x, 1.75, 6.15); box(1.8, .08, .06, MAT.woodDark, x, 3.35, 6.15);
+    }
+    ground(20, 7, new THREE.MeshStandardMaterial({map:rep(FX.dirt, 4, 2), roughness:1}), 0, 10);
+    for (let i = 0; i < 14; i++) SPH(.15 + Math.random()*.2, M(0x7A7A74,{roughness:1}), (Math.random() - .5)*16, .1, 6.8 + Math.random()*6, FACADE, 6).scale.y = .6;
+    for (let i = 0; i < 18; i++) mesh(new THREE.ConeGeometry(.06, .5 + Math.random()*.4, 4), M(0x4E6B2A,{roughness:1}), (Math.random() - .5)*18, .25, 6.8 + Math.random()*6, FACADE);
+    for (let i = 0; i < 4; i++) SPH(.22, M(0x2A2A2A,{roughness:.9}), -6 + i*4, .2, 12.2 - (i % 2), FACADE, 8);
+    for (let i = 0; i < 3; i++) CY(.14,.12,.3, M(0x8A8A8A,{metalness:.5, roughness:.6}), -3 + i*2.6, 0, 7.2 + (i % 2)*.4, FACADE, 10);
+  }
+
+  if (stage === 1){
+    slabs(M(0xEDE3CF,{roughness:.7}));
+    const glass = new THREE.MeshStandardMaterial({color:0x7FA6B5, metalness:.8, roughness:.05});
+    for (const x of WIN){
+      plane(1.6, 1.6, glass, x, 2.6, 6.14);
+      box(1.8, .06, .08, MAT.white, x, 1.75, 6.15); box(1.8, .06, .08, MAT.white, x, 3.35, 6.15);
+      for (let k = 0; k < 4; k++) box(1.6, .03, .02, MAT.white, x, 1.9 + k*.38, 6.15);
+    }
+    for (const x of [-2.4, -.8, .8, 2.4]) SPH(.06, new THREE.MeshBasicMaterial({color:0xFFF1C9}), x, 3.5, 7.8, FACADE, 8);
+    ground(20, 7, floorMat(TEX.marble, 20, 7, 3), 0, 10);
+    for (const x of [-6.5, -3, 3, 6.5]){
+      box(1.4, .4, .5, M(0xCDBB9E), x, 0, 8.4);
+      ['#E86A5A','#F5D86A','#F59AB6','#B07AD9'].forEach((c, k) => SPH(.12, M(c), x - .4 + k*.27, .6, 8.4, FACADE, 8));
+    }
+    for (const x of [-8.5, 8.5]){ CY(.06,.07,2.6, M(0x2E3438,{metalness:.5}), x, 0, 9.5, FACADE, 8); SPH(.2, new THREE.MeshBasicMaterial({color:0xFFE7A3}), x, 2.7, 9.5, FACADE, 10); }
+  }
+
+  if (stage >= 2){
+    slabs(new THREE.MeshStandardMaterial({map:rep(TEX.marbleWhite, 2, 1), roughness:.2, metalness:.05}));
+    box(16.2, .12, .08, MAT.gold, 0, 4.85, 6.16); box(16.2, .12, .08, MAT.gold, 0, .15, 6.16);
+    for (const x of [-6.5, -4, 4, 6.5]){ CY(.28,.32,4.6, M(0xF6F1E6,{roughness:.3}), x, 0, 6.5, FACADE, 16); box(.8, .2, .8, MAT.gold, x, 4.6, 6.5); }
+    for (const x of WIN){
+      plane(1.6, 1.6, new THREE.MeshStandardMaterial({color:0x9FC6D6, metalness:.9, roughness:.03}), x, 2.6, 6.14);
+      box(1.8, .08, .08, MAT.gold, x, 1.75, 6.15); box(1.8, .08, .08, MAT.gold, x, 3.35, 6.15);
+    }
+    plane(4.6, .9, new THREE.MeshBasicMaterial({map:label('GRAND RESORT', {w:1024, h:200, bg:'rgba(0,0,0,0)', color:'#FFD700', font:'120px Gloock, Georgia, serif'}), transparent:true}), 0, 4.25, 6.2);
+    ground(3, 7, M(0x9A1F2B,{roughness:.9}), 0, 10, .035);
+    CY(1.5,1.6,.4, MAT.stone, -6, 0, 10, FACADE, 24);
+    CY(1.3,1.3,.05, new THREE.MeshStandardMaterial({color:0x3FB8D0, transparent:true, opacity:.7, roughness:.05}), -6, .3, 10, FACADE, 24);
+    CY(.12,.12,.9, MAT.stone, -6, .4, 10, FACADE, 8);
+    SPH(.2, new THREE.MeshStandardMaterial({color:0x3FB8D0, transparent:true, opacity:.8}), -6, 1.35, 10, FACADE, 10);
+    facadeSolids.push(solid(-7.6, 8.4, -4.4, 11.6));
+    for (const x of [-7, -5, 5, 7]) SPH(.08, new THREE.MeshBasicMaterial({color:0xFFE7A3}), x, .05, 7.5, FACADE, 6);
+  }
+}
+
+
+/* ============================================================
+   SEGUNDO ANDAR · escada com subida contínua, hall superior, suítes 201/202/203 e manutenção
+   O teto do térreo (y 5.0–5.2) é o piso do 2º andar. Colisões são marcadas com o andar (floor 0 ou 1).
+   Suítes do 2º andar entram por etapa (201/202 em Modernização, 203 em Alto Padrão) e recebem sujeira e crises.
+   ============================================================ */
+const UP_Y = 5.2, ROOF_Y = 8.4;
+const STAIR = {x1:1.9, x2:7.7, z1:4.4, z2:5.8};   // escada encostada na parede sul: sobe de x1 (térreo) até x2 (2º andar)
+let PLAYER_LEVEL = 0;
+/* Altura do piso dentro da escada (0 embaixo, UP_Y em cima); null fora dela */
+function stairH(x, z){
+  if (x < STAIR.x1 || x > STAIR.x2 || z < STAIR.z1 || z > STAIR.z2) return null;
+  return UP_Y * (x - STAIR.x1) / (STAIR.x2 - STAIR.x1);
+}
+/* Andar que colide numa posição: dentro da escada, pela altura; fora dela, o andar do jogador */
+function levelAt(x, z){ const h = stairH(x, z); return h === null ? PLAYER_LEVEL : (h > UP_Y/2 ? 1 : 0); }
+
+BUILD_FLOOR = 1;
+const upMat = {wall:M(0xEFE6D4,{roughness:.8}), carpet:M(0x7A2E3A,{roughness:1}), marble:M(0xFFFFFF,{map:rep(TEX.marbleWhite, 3, 2), roughness:.2}), white:M(0xF7F3EA,{roughness:.8})};
+/* Parede do 2º andar: caixa com colisão no andar superior */
+function upWall(x1, z1, x2, z2, h = 3.2, mat = upMat.wall){
+  const w = Math.max(Math.abs(x2 - x1), .2), d = Math.max(Math.abs(z2 - z1), .2), cx = (x1 + x2)/2, cz = (z1 + z2)/2;
+  const m = B(w, h, d, mat, cx, UP_Y, cz); occluders.push(m); solid(cx - w/2, cz - d/2, cx + w/2, cz + d/2); return m;
+}
+/* Laje do 2º andar sem o buraco da escada, e cobertura sobre todo o prédio */
+ceiling(-8,-6,8,STAIR.z1,UP_Y); ceiling(-8,STAIR.z1,STAIR.x1,6,UP_Y); ceiling(STAIR.x2,STAIR.z1,8,6,UP_Y); ceiling(STAIR.x1,STAIR.z2,STAIR.x2,6,UP_Y);
+floor(-8,-6,8,STAIR.z1, upMat.carpet, UP_Y + .01); floor(-8,STAIR.z1,STAIR.x1,6, upMat.carpet, UP_Y + .01);
+floor(STAIR.x2,STAIR.z1,8,6, upMat.carpet, UP_Y + .01); floor(STAIR.x1,STAIR.z2,STAIR.x2,6, upMat.carpet, UP_Y + .01);
+ceiling(-8,-6,8,6,ROOF_Y);
+
+/* Paredes externas (norte com janelas para a piscina), balcão ao sul e divisórias das suítes */
+upWall(-8,-6,-8,6); upWall(8,-6,8,6);
+/* Parede norte com um vão de porta-janela por suíte (abrem para a varanda, sobre a piscina) */
+function upWallDoors(z, x1, x2, gaps, door = 2.4, h = 3.2){
+  let cur = x1;
+  for (const [g1,g2] of gaps){ upWall(cur, z, g1, z); occluders.push(B(g2 - g1, h - door, .2, upMat.wall, (g1 + g2)/2, UP_Y + door, z)); cur = g2; }
+  upWall(cur, z, x2, z);
+}
+upWallDoors(-6, -8, 8, [[-6.7,-4.9],[-2.3,-.5],[3.5,5.3]]);
+for (const [a,b] of [[-8,-5.8],[-4.2,-.8],[.8,4.2],[5.8,8]]) upWall(a,5.9,b,6,3.2);
+for (const cx of [-5,0,5]){
+  B(1.6,.9,.2,upMat.wall,cx,UP_Y,5.95); B(1.6,.3,.2,upMat.wall,cx,UP_Y+2.9,5.95); solid(cx-.8,5.85,cx+.8,6.05);
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.6,2.0), new THREE.MeshStandardMaterial({color:0xB8E0F0, transparent:true, opacity:.35, roughness:.05, metalness:.3}));
+  glass.position.set(cx, UP_Y+1.9, 5.96); scene.add(glass);
+}
+upWall(-8,-.8,-6.8,-.8); upWall(-4.8,-.8,-2.4,-.8); upWall(-.4,-.8,3.4,-.8); upWall(5.4,-.8,8,-.8);
+upWall(-3.6,-6,-3.6,-.8); upWall(.8,-6,.8,-.8);
+
+/* Escada: lance reto encostado na parede sul, sobe de oeste (térreo) para leste (2º andar).
+   Degraus de madeira com passadeira vermelha, pontaletes de carvalho, corrimão de latão com balaústres
+   e pilares nas extremidades. Colisão: só os corrimãos (sólidos) e a física por stairH/levelAt. */
+const STAIR_RUN = STAIR.x2 - STAIR.x1, STAIR_W = STAIR.z2 - STAIR.z1, STAIR_ZC = (STAIR.z1 + STAIR.z2)/2;
+const STAIR_LEN = Math.hypot(STAIR_RUN, UP_Y), STAIR_ANG = Math.atan2(UP_Y, STAIR_RUN);
+const STAIR_N = 30, STAIR_RISE = UP_Y/STAIR_N, STAIR_TREAD = STAIR_RUN/STAIR_N, RAIL_H = .92;
+const STAIR_MAT = {
+  riser:M(0xD9C3A0,{roughness:.6}), tread:M(0x9A6E45,{roughness:.5}), side:M(0x4A2B1B,{roughness:.4}),
+  runner:M(0x9A1F2B,{roughness:.95}), led:new THREE.MeshBasicMaterial({color:0xFFE7A3}),
+};
+for (let i = 0; i < STAIR_N; i++){
+  const top = STAIR_RISE*(i + 1), x0 = STAIR.x1 + i*STAIR_TREAD;
+  B(STAIR_TREAD, top - .03, STAIR_W, STAIR_MAT.riser, x0 + STAIR_TREAD/2, 0, STAIR_ZC);
+  B(STAIR_TREAD, .03, STAIR_W, STAIR_MAT.tread, x0 + STAIR_TREAD/2, top - .03, STAIR_ZC);
+  B(STAIR_TREAD*.92, .008, .9, STAIR_MAT.runner, x0 + STAIR_TREAD/2, top, STAIR_ZC, scene, false);
+  if (i % 5 === 4 && i < STAIR_N - 1){
+    const led = new THREE.Mesh(new THREE.BoxGeometry(.008, .02, STAIR_W*.6), STAIR_MAT.led);
+    led.position.set(x0 + STAIR_TREAD + .004, top - .06, STAIR_ZC); scene.add(led);
+  }
+}
+/* Longarinas: faces inclinadas que fecham o perfil em degrau, nos dois lados */
+const stairMid = {x:(STAIR.x1 + STAIR.x2)/2, y:UP_Y/2};
+for (const z of [STAIR.z1 - .02, STAIR.z2 + .02]){
+  const side = new THREE.Mesh(new THREE.BoxGeometry(STAIR_LEN, .26, .03), STAIR_MAT.side);
+  side.rotation.z = STAIR_ANG;
+  side.position.set(stairMid.x + .13*Math.sin(STAIR_ANG), stairMid.y - .13*Math.cos(STAIR_ANG), z);
+  side.castShadow = side.receiveShadow = true; scene.add(side);
+}
+/* Corrimão de latão em cada lado, paralelo à inclinação, com balaústres e pilares */
+for (const z of [STAIR.z1 - .06, STAIR.z2 + .06]){
+  const rail = new THREE.Mesh(new THREE.CylinderGeometry(.028, .028, STAIR_LEN, 12), MAT.gold);
+  rail.rotation.z = STAIR_ANG - Math.PI/2;
+  rail.position.set(stairMid.x, stairMid.y + RAIL_H, z); rail.castShadow = true; scene.add(rail);
+  for (let x = STAIR.x1 + .25; x <= STAIR.x2 - .2; x += .45){
+    const base = UP_Y*(x - STAIR.x1)/STAIR_RUN;
+    CY(.018, .018, RAIL_H, MAT.gold, x, base, z, scene, 8);
+  }
+  for (const [x, base] of [[STAIR.x1, 0], [STAIR.x2, UP_Y]]){
+    B(.1, RAIL_H + .08, .1, MAT.gold, x, base, z, scene);
+    SPH(.075, MAT.gold, x, base + RAIL_H + .08, z, scene, 14);
+  }
+}
+/* Os corrimãos são sólidos nos dois andares, e o pé e o topo da escada têm barreiras:
+   não se entra pelas laterais, nem pelo 2º andar pela parte de baixo, nem pelo térreo pela saída de cima */
+for (const f of [0, 1]){
+  BUILD_FLOOR = f;
+  for (const z of [STAIR.z1, STAIR.z2]) solid(STAIR.x1, z - .04, STAIR.x2, z + .04);
+}
+BUILD_FLOOR = 0; solid(STAIR.x2 - .1, STAIR.z1, STAIR.x2 + .2, STAIR.z2);
+BUILD_FLOOR = 1; solid(STAIR.x1 - .06, STAIR.z1, STAIR.x1 + .06, STAIR.z2);
+BUILD_FLOOR = 1;
+
+/* Suítes do 2º andar: 201 e 202 Executivas, 203 Presidencial. Cada suíte tem uma parte aberta (mobília e varanda)
+   e uma parte fechada (parede que tapa o vão da porta-janela). syncUpper troca as duas conforme a etapa. */
+const ROOM_UP = [
+  {id:'201', cx:-5.8, level:2, stage:2, door:-5.8, leak:{x:1.2, z:-4.9}, pipe:{x:-1.6, z:-4.4}},
+  {id:'202', cx:-1.4, level:2, stage:2, door:-1.4, leak:{x:1.2, z:-4.9}, pipe:{x:-1.6, z:-4.4}},
+  {id:'203', cx:4.4,  level:3, stage:3, door:4.4,  leak:{x:-2.2, z:-4.6}, pipe:{x:-1.6, z:-4.4}},
+];
+/* Corredor: passadeira vermelha e luzes de teto extras */
+floor(-7.4, 1.2, 7.4, 3.8, M(0xFFFFFF,{map:rep(TEX.corridor, 6, 1), roughness:.9}), UP_Y + .025);
+lamp(-6, 7.6, 3, 0xFFE2B0, .8, 8); lamp(6, 7.6, 3, 0xFFE2B0, .8, 8);
+/* Placas numeradas acima de cada porta, no lado do corredor */
+for (const d of ROOM_UP){
+  const plate = new THREE.Mesh(new THREE.PlaneGeometry(.5,.22), new THREE.MeshStandardMaterial({map:label(d.id,{w:256,h:112,bg:'#2A1B14',border:'#D8A64A',font:'72px Gloock, Georgia, serif'}), metalness:.3, roughness:.4}));
+  plate.position.set(d.door, UP_Y + 2.7, -.66); scene.add(plate);
+}
+/* Portas de madeira com dobradiça, uma por suíte: abertas por padrão; E fecha e abre */
+const UP_DOORS = [];
+for (const d of ROOM_UP){
+  const pivot = new THREE.Group(); pivot.position.set(d.door - .95, UP_Y, -.8); pivot.rotation.y = -Math.PI/2; scene.add(pivot);
+  B(1.9,2.3,.06, MAT.woodDark, .95, 0, 0, pivot);
+  SPH(.035, MAT.gold, 1.75, 1.05, .05, pivot, 10);
+  const door = {pivot, open:true, want:-Math.PI/2, solid:solid(d.door - .95, -.86, d.door + .95, -.74)};
+  door.solid.on = false;
+  interact(pivot, {label:() => `[E] ${door.open ? 'Fechar' : 'Abrir'} porta da suíte ${d.id}`, ok:() => true, action:() => {
+    door.open = !door.open; door.want = door.open ? -Math.PI/2 : 0; door.solid.on = !door.open;
+  }});
+  UP_DOORS.push(door);
+}
+ANIM.push((dt) => UP_DOORS.forEach(d => { d.pivot.rotation.y += (d.want - d.pivot.rotation.y) * Math.min(1, dt*6); }));
+/* Montagem das suítes: varanda com guarda-corpo dourado e porta-janela de vidro para a piscina */
+const SUITE_PARTS = {};
+function buildSuite(d){
+  const open = new THREE.Group(), closed = new THREE.Group(); scene.add(open, closed);
+  const cx = d.cx, mark = solids.length;
+  B(2.4,.2,1.9, upMat.white, cx, UP_Y - .2, -6.95, open);
+  B(2.4,.05,.05, MAT.gold, cx, UP_Y + .9, -7.8, open);
+  B(.05,.05,1.9, MAT.gold, cx - 1.2, UP_Y + .9, -6.9, open);
+  B(.05,.05,1.9, MAT.gold, cx + 1.2, UP_Y + .9, -6.9, open);
+  for (let x = cx - 1.1; x <= cx + 1.1; x += .275) CY(.015,.015,.9, MAT.gold, x, UP_Y, -7.8, open, 6);
+  solid(cx - 1.2, -7.9, cx + 1.2, -7.75); solid(cx - 1.25, -7.75, cx - 1.15, -6.05); solid(cx + 1.15, -7.75, cx + 1.25, -6.05);
+  const glass = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 2.3), new THREE.MeshStandardMaterial({color:0xB8E0F0, transparent:true, opacity:.25, roughness:.05, metalness:.3}));
+  glass.position.set(cx, UP_Y + 1.15, -6.02); open.add(glass);
+  if (d.level === 3) furnishPres(d, open); else furnishExec(d, open);
+  const openSolids = solids.slice(mark);
+  const fill = B(1.8, 2.4, .2, upMat.wall, cx, UP_Y, -6, closed); occluders.push(fill);
+  const closedSolid = solid(cx - .9, -6.1, cx + .9, -5.9);
+  open.visible = false; openSolids.forEach(s => s.on = false); closedSolid.on = true;
+  return {open, closed, openSolids, closedSolids:[closedSolid]};
+}
+function furnishExec(d, open){ // cama, cabeceira, sofá e mesinha
+  solidOf(B(2.1,.45,2.2, upMat.white, d.cx, UP_Y, -3.2, open), .03);
+  B(2.1,1.0,.12, M(0x8A5E38), d.cx, UP_Y, -4.9, open);
+  solidOf(B(1.6,.5,.9, MAT.leather, d.cx, UP_Y, -1.6, open), .03);
+  B(.5,.5,.5, MAT.woodDark, d.cx + 1.4, UP_Y, -4.4, open);
+}
+function furnishPres(d, open){ // mármore, cama king, jacuzzi com borbulhas e área de estar privada
+  open.add(floor(.8,-6,8,-.8, upMat.marble, UP_Y + .02));
+  solidOf(B(2.6,.45,2.6, M(0xF1E4F3), d.cx, UP_Y, -3.6, open), .03);
+  B(2.6,1.6,.16, MAT.velvet, d.cx, UP_Y, -5.9, open);
+  solidOf(CY(1.2,1.2,.5, M(0xF5F2EC,{roughness:.3}), 6.6, UP_Y, -4.6, open, 24), .02);
+  const water = new THREE.Mesh(new THREE.CircleGeometry(1.05, 24), new THREE.MeshStandardMaterial({color:0x3FD0D8, transparent:true, opacity:.85, roughness:.05, emissive:0x0A4A55}));
+  water.rotation.x = -Math.PI/2; water.position.set(6.6, UP_Y + .42, -4.6); open.add(water);
+  for (let i = 0; i < 16; i++){
+    const a = i*2.4, r = .2 + (i % 5)*.2;
+    const b = new THREE.Mesh(new THREE.SphereGeometry(.035,8,6), new THREE.MeshBasicMaterial({color:0xFFFFFF, transparent:true, opacity:.8}));
+    b.position.set(6.6 + Math.cos(a)*r, UP_Y + .42, -4.6 + Math.sin(a)*r); b.userData = {y0:UP_Y + .42, ph:i/16}; open.add(b); BUBBLES.push(b);
+  }
+  solidOf(B(2.0,.45,.85, MAT.velvet, 2.2, UP_Y, -1.6, open), .03);
+  CY(.35,.35,.04, MAT.gold, 3.2, UP_Y + .42, -2.6, open, 24);
+}
+for (const d of ROOM_UP) SUITE_PARTS[d.id] = buildSuite(d);
+/* Hall superior: lustres de teto e lâmpadas */
+lamp(-5.8, 7.6, -3.4, 0xFFD9A0, 1, 8); lamp(-1.4, 7.6, -3.4, 0xFFD9A0, 1, 8); lamp(4.4, 7.6, -3.4, 0xFFD9A0, 1.1, 9);
+lamp(-3, 7.6, 3, 0xFFE2B0, .9, 9); lamp(2, 7.6, 3, 0xFFE2B0, .9, 9);
+/* Salinha de estar sobre o balcão ao sul */
+solidOf(B(2.4,.45,.9, MAT.leather, -3, UP_Y, 3.6), .03);
+BUILD_FLOOR = 0;
+
+/* Suítes superiores como alvos de sujeira e crise (sem hóspedes, que caminham pelo térreo) */
+const UPPER = ROOM_UP.map(d => {
+  const group = new THREE.Group(); group.position.set(d.cx, UP_Y, -.8); scene.add(group); group.updateMatrixWorld(true);
+  return {id:d.id, group, dirt:[], state:'free', guest:null, level:d.level, stage:d.stage, owned:false, upper:true, leak:d.leak, pipe:d.pipe, parts:SUITE_PARTS[d.id]};
+});
+/* Liberação pela etapa de reforma: a cada nova etapa, as suítes liberadas entram na manutenção e abrem a varanda */
+function syncUpper(index){
+  UPPER.forEach(r => {
+    const ok = index >= r.stage;
+    if (ok && !r.owned) toast(`Suíte ${r.id} do 2º andar liberada para manutenção e limpeza`, 'good');
+    r.owned = ok;
+    r.parts.open.visible = ok; r.parts.closed.visible = !ok;
+    r.parts.openSolids.forEach(s => s.on = ok); r.parts.closedSolids.forEach(s => s.on = !ok);
+  });
+}
+
+
+class World3D {
+  /* Ruína: paredes desbotadas. Etapas seguintes: paredes limpas. Iluminação fica com as melhorias */
+  applyStage(index){
+    const ruin = index === 0;
+    MAT.wall.color.setHex(ruin ? 0xA9A59C : 0xF1E9DC);
+    MAT.wallWarm.color.setHex(ruin ? 0x9C968C : 0xE9D6B8);
+    buildFacade(index);
+    syncUpper(index);
+  }
+  applyBranch(b){ scene.fog.color.setHex(b.fog); sun.color.setHex(b.sun); }
+}
+const WORLD = new World3D();
+
+/* ============================================================
+   CONTROLE · jogador, interação e cozinha como classes sobre as funções de jogo
+   ============================================================ */
+class PlayerController {
+  update(dt){ move(dt); }
+  get locked(){ return controls.isLocked; }
+}
+class InteractionEngine {
+  update(){ updateAim(); }
+  press(){ interactNow(); }
+}
+class KitchenMinigame {
+  get active(){ return MISSION.active; }
+  start(recipe){ return startRecipe(recipe); }
+}
+const PLAYER = new PlayerController(), INTERACT = new InteractionEngine(), KITCHEN = new KitchenMinigame();
+/* ============================================================
+   PERSISTÊNCIA · SaveSystem grava em localStorage (chave grand_resort_save)
+   Hóspedes, crises e conserto em andamento não são salvos.
+   ============================================================ */
+class SaveSystem {
+  constructor(key){ this.key = key; this.version = 2; }
+  snapshot(){
+    return {v:this.version, money:G.money, rep:G.rep, day:G.day, t:G.t, elapsed:G.elapsed, incomeToday:G.incomeToday, expenseToday:G.expenseToday,
+            served:G.served, friend:G.friend, guestSeq, upg:G.upg, staff:G.staff, staffLv:G.staffLv, branch:G.branch, owned:G.owned,
+            plus:G.plus, partners:G.partners, rooms:ROOMS.map(r => ({owned:r.owned, level:r.level})), log:G.log.slice(0, 40)};
+  }
+  save(){ try { localStorage.setItem(this.key, JSON.stringify(this.snapshot())); } catch(e){ /* sem armazenamento: o jogo segue sem salvar */ } }
+  read(){ try { const d = JSON.parse(localStorage.getItem(this.key)); return d && d.v === this.version ? d : null; } catch(e){ return null; } }
+  clear(){ try { localStorage.removeItem(this.key); } catch(e){ /* nada a apagar */ } }
+  load(){
+    const d = this.read(); if (!d) return false;
+    try {
+      Object.assign(G, {money:d.money ?? G.money, rep:d.rep ?? 0, day:d.day ?? 1, t:d.t ?? 0, elapsed:d.elapsed ?? 0, incomeToday:d.incomeToday ?? 0,
+                        expenseToday:d.expenseToday ?? 0, served:d.served ?? 0, friend:d.friend ?? 0, log:d.log || [], branch:d.branch || 'city',
+                        owned:d.owned || ['city'], plus:d.plus || {}, partners:Object.assign({adsT:0, supplier:false}, d.partners)});
+      guestSeq = d.guestSeq || 0;
+      G.upg = Object.assign({bar:false, floor:false, light:false}, d.upg);
+      G.staffLv = Object.assign({recep:1, maid:1}, d.staffLv);
+      for (const k of Object.keys(G.upg)) if (G.upg[k]) applyUpgrade(k);   // antes das salas: buildRoom usa G.upg.light
+      ROOMS.forEach((r, i) => { const s = d.rooms && d.rooms[i]; if (s){ r.owned = s.owned; r.level = s.level; buildRoom(r); } });
+      for (const role of Object.keys(ROLES)) for (let i = 0; i < Math.min((d.staff && d.staff[role]) || 0, ROLES[role].max); i++){ G.staff[role]++; spawnStaff(role, i); }
+      const branch = BRANCHES.find(b => b.id === G.branch); if (branch) WORLD.applyBranch(branch);
+      return true;
+    } catch(e){ return false; }
+  }
+}
+/* Jogo: dono do autosave e dos sistemas de crise, mundo, jogador, interação e cozinha */
+class Game {
+  constructor(){
+    this.save = new SaveSystem('grand_resort_save');
+    this.crises = CRISES; this.world = WORLD; this.player = PLAYER; this.interaction = INTERACT; this.kitchen = KITCHEN;
+  }
+}
+const GAME = new Game();
+
+/* ============================================================
+   LOOP PRINCIPAL · requestAnimationFrame, sem horários fixos (tempo real contínuo)
    ============================================================ */
 const clock3 = new THREE.Clock();
 let T = 0;
@@ -1997,15 +2787,25 @@ function loop(){
   const run = !G.paused && !pcOpen;
   T += dt;
   if (run) simulate(dt);
-  move(dt);
+  GAME.player.update(dt);
   ANIM.forEach(f => f(run ? dt : 0, T));
-  updateAim();
+  GAME.interaction.update();
   hud(dt);
   chopTick();
   renderMission();
   renderer.render(scene, camera);
   requestAnimationFrame(loop);
 }
+
+/* Início: carrega o progresso salvo ou começa na Ruína (quarto 101 sujo, único quarto operacional) */
+const hadSave = GAME.save.load();
+if (!hadSave) dirtyRoom(ROOMS[0]);
+else { $('play').textContent = 'Continuar'; $('lockNote').textContent = 'Progresso salvo carregado. Você volta exatamente de onde parou.'; $('resetSave').hidden = false; }
+$('resetSave').onclick = () => { GAME.save.clear(); location.reload(); };
+setInterval(() => GAME.save.save(), 10000);
+addEventListener('beforeunload', () => GAME.save.save());
 camera.lookAt(0, 1.65, 0);
 loop();
 </script>
+</body>
+</html>
