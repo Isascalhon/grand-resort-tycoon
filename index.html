@@ -272,11 +272,21 @@ camera.position.set(0, 1.65, 10.5);
 scene.add(camera);
 addEventListener('resize', () => { camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 
+/* ---------- Ciclo de vida de recursos WebGL ----------
+   Materiais e texturas criados por objetos que são refeitos ou removidos (quartos, fachada, hóspedes, pratos,
+   etiquetas) entram num lote. Ao refazer ou remover o objeto, o lote anterior é liberado. Recursos compartilhados
+   do cenário fixo são criados fora de lote e nunca são liberados. Definido antes de tex(), que roda na carga. */
+const GPU = { batch: null };
+function gpuTrack(r){ if (GPU.batch) GPU.batch.push(r); return r; }
+function gpuCollect(fn){ const prev = GPU.batch, list = []; GPU.batch = list; try { fn(); } finally { GPU.batch = prev; } return list; }
+function gpuFree(list){ if (!list) return; for (const r of list) r.dispose(); list.length = 0; }
+/* Remove o objeto da cena liberando geometrias próprias (sprites têm geometria compartilhada) e o lote de recursos */
+function gpuFreeObj(obj){ obj.traverse(o => { if (o.geometry && !o.isSprite) o.geometry.dispose(); }); gpuFree(obj.userData.res); }
 /* ---------- Texturas procedurais (canvas) ---------- */
 function tex(size, draw, h = size){
   const c = document.createElement('canvas'); c.width = size; c.height = h;
   const g = c.getContext('2d'); draw(g, size, h);
-  const t = new THREE.CanvasTexture(c);
+  const t = gpuTrack(new THREE.CanvasTexture(c));
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.encoding = THREE.sRGBEncoding;
   t.anisotropy = renderer.capabilities.getMaxAnisotropy();
   return t;
@@ -387,7 +397,7 @@ function pbrMat(name, w, d, tile, o = {}){
   const p = PBR[name];
   return M(0xFFFFFF, Object.assign({map:rep(p.map, w/tile, d/tile), bumpMap:rep(p.bump, w/tile, d/tile), bumpScale:p.bumpScale, roughness:p.roughness, metalness:p.metalness}, o));
 }
-function rep(t, rx, ry){ const c = t.clone(); c.needsUpdate = true; c.repeat.set(rx, ry); return c; }
+function rep(t, rx, ry){ const c = gpuTrack(t.clone()); c.needsUpdate = true; c.repeat.set(rx, ry); return c; }
 function label(text, o = {}){
   const w = o.w || 512, h = o.h || 128;
   const t = tex(w, (g) => {
@@ -401,7 +411,7 @@ function label(text, o = {}){
 }
 
 /* ---------- Materiais compartilhados ---------- */
-const M = (color, o = {}) => new THREE.MeshStandardMaterial(Object.assign({color, roughness:.7, metalness:0}, o));
+const M = (color, o = {}) => gpuTrack(new THREE.MeshStandardMaterial(Object.assign({color, roughness:.7, metalness:0}, o)));
 const MAT = {
   wall: M(0xF1E9DC, {roughness:.9}), wallWarm: M(0xE9D6B8, {roughness:.9}), wallTile: M(0xFFFFFF, {map:rep(TEX.tileWhite,4,2), roughness:.4}),
   ceiling: M(0xF7F2EA, {roughness:.95}), woodDark: M(0x4A2B1B, {roughness:.45}), wood: M(0x9A6E45, {roughness:.6}),
@@ -508,7 +518,15 @@ const G = {money:1500, rep:0, day:1, t:0, elapsed:0, dayLen:240, incomeToday:0, 
 const ANIM = [];   // callbacks por quadro: (dt, time) => {}
 function addRep(points){ G.rep = Math.max(0, Math.min(100, G.rep + points)); }
 const starsNow = () => Math.max(0, Math.min(10, G.rep/10));
-const stageIndex = () => STAGES.filter(s => starsNow() >= s.min).length - 1;
+/* Etapa com histerese de 0,15★: reputação oscilando perto de um limiar não refaz a fachada a cada variação */
+let stageCur = null;
+const stageIndex = () => {
+  const s = starsNow();
+  if (stageCur === null) stageCur = STAGES.filter(x => s >= x.min).length - 1;
+  while (stageCur + 1 < STAGES.length && s >= STAGES[stageCur + 1].min + .15) stageCur++;
+  while (stageCur > 0 && s < STAGES[stageCur].min - .15) stageCur--;
+  return stageCur;
+};
 const stageName = () => STAGES[stageIndex()].name;
 /* Trava de reforma: texto com o que falta, ou null se o quarto pode ser comprado/evoluído agora */
 function gateOf(room){
@@ -569,8 +587,8 @@ function rr(g, x, y, w, h, r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w
 /* Etiqueta flutuante (sprite) com texto atualizável */
 function textSprite(height = .32, w = 320, h = 72){
   const c = document.createElement('canvas'); c.width = w; c.height = h;
-  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
-  const s = new THREE.Sprite(new THREE.SpriteMaterial({map:t, transparent:true, depthWrite:false}));
+  const t = gpuTrack(new THREE.CanvasTexture(c)); t.encoding = THREE.sRGBEncoding;
+  const s = new THREE.Sprite(gpuTrack(new THREE.SpriteMaterial({map:t, transparent:true, depthWrite:false})));
   s.scale.set(height * w / h, height, 1);
   s.userData.set = (text, bg = 'rgba(42,27,20,.9)', fg = '#F6EFE3') => {
     const key = text + bg + fg; if (s.userData.last === key) return; s.userData.last = key;
@@ -834,7 +852,9 @@ function upgradeRoom(room){
 }
 
 /* Mobília do quarto por nível. Coordenadas locais: u = lateral (-4.5..4.5), profundidade v → z local = -v (porta em v=0, janela em v=8) */
-function buildRoom(room){
+/* Refaz a mobília do quarto liberando os materiais e texturas da versão anterior */
+function buildRoom(room){ gpuFree(room.res); room.res = gpuCollect(() => buildRoomInner(room)); }
+function buildRoomInner(room){
   const g = room.group;
   while (g.children.length){ const c = g.children.pop(); c.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   room.solids.forEach(s => { const i = solids.indexOf(s); if (i >= 0) solids.splice(i,1); }); room.solids = [];
@@ -1316,7 +1336,12 @@ const NPCS = [];
 const pick = a => a[Math.floor(Math.random()*a.length)];
 const SKINS = [0xF1C9A5,0xD9A57E,0xA8714A,0x7A4E2E,0xE8B894], HAIR = [0x2A1B14,0x5A3A20,0xD8B26A,0x1E1C22,0x8A5A34,0xB0B0B0];
 const SHIRTS = [0x2F6FB0,0xE86A5A,0x3FA35F,0xF2A93B,0x7D4A84,0x2BB3B1,0xF59AB6,0x5A6470];
+/* Hóspede/funcionário: todos os materiais e texturas ficam no lote n.res, liberado ao remover o personagem */
 function makeNPC(kind, opts = {}){
+  let n; const res = gpuCollect(() => { n = makeNPCInner(kind, opts); });
+  n.res = res; return n;
+}
+function makeNPCInner(kind, opts = {}){
   const g = new THREE.Group(); scene.add(g);
   const look = {guest:{shirt:pick(SHIRTS), pants:pick([0x2A3442,0x6E5A44,0xE8E2D6,0x3B4F7A])}, recep:{shirt:0xFFFFFF, pants:0x15171C},
     maid:{shirt:0x9AC6E8, pants:0x9AC6E8}, chef:{shirt:0xFFFFFF, pants:0x2A2A2A}, waiter:{shirt:0x1E1C22, pants:0x1E1C22}, bartender:{shirt:0xF5C542, pants:0x2A3442}}[kind];
@@ -1353,7 +1378,7 @@ function makeNPC(kind, opts = {}){
   NPCS.push(n); return n;
 }
 function removeNPC(n){
-  scene.remove(n.g); unregister(n.g); n.g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  scene.remove(n.g); unregister(n.g); n.g.traverse(o => { if (o.geometry && !o.isSprite) o.geometry.dispose(); }); gpuFree(n.res);
   const i = NPCS.indexOf(n); if (i >= 0) NPCS.splice(i,1);
   const j = G.guests.indexOf(n); if (j >= 0) G.guests.splice(j,1);
 }
@@ -1855,7 +1880,7 @@ const RECIPES = [
   {id:'risoto', name:'Risoto de Camarão', need:['arroz','camarao','queijo','manteiga','ervas'], chops:4, zone:.12, cook:{speed:6, ideal:72, tol:6}, limit:190, base:260, bonus:380, unlock:7, raw:0xF4F1EA, done:0xE8C77A},
 ];
 /* Materiais de comida: MeshPhysicalMaterial com verniz (clearcoat) e relevo (bumpMap) para grelha, massa e farelo */
-const PM = (color, o = {}) => new THREE.MeshPhysicalMaterial(Object.assign({color, roughness:.6, metalness:0, clearcoat:0}, o));
+const PM = (color, o = {}) => gpuTrack(new THREE.MeshPhysicalMaterial(Object.assign({color, roughness:.6, metalness:0, clearcoat:0}, o)));
 const DARK_FOOD = PM(0x2A1B14, {roughness:.9});
 const FOOD_TEX = {
   grill: tex(128, (g,s) => { g.fillStyle = '#7A7A7A'; g.fillRect(0,0,s,s); g.strokeStyle = '#FFFFFF'; g.lineWidth = 12; for (let k = -s; k < s*2; k += 32){ g.beginPath(); g.moveTo(k,0); g.lineTo(k+s,s); g.stroke(); } }),
@@ -1976,7 +2001,12 @@ const mSprite = textSprite(.28); mSprite.position.set(27.0, 1.75, -.5); scene.ad
 const carryG = new THREE.Group(); carryG.position.set(.34, -.36, -.72); camera.add(carryG); carryG.visible = false;
 /* Prato montado em camadas: cada receita é uma pilha de ingredientes com materiais próprios (verniz, relevo, brilho).
    Queimado: tudo sai carbonizado. */
+/* Prato: materiais do prato ficam em g.userData.res e são liberados ao retirar o prato da cena */
 function dishModel(id, burnt){
+  let g; const res = gpuCollect(() => { g = dishModelInner(id, burnt); });
+  g.userData.res = res; return g;
+}
+function dishModelInner(id, burnt){
   const g = new THREE.Group();
   const food = (c, o) => burnt ? DARK_FOOD : PM(c, o);
   CY(.17,.14,.02, PM(0xFFFFFF,{roughness:.15, clearcoat:.7}), 0, 0, 0, g, 24);
@@ -2195,7 +2225,7 @@ function cookAction(){
 }
 function plateAction(){
   const M_ = MISSION; M_.step = 'serve'; pan.visible = false;
-  while (carryG.children.length) carryG.remove(carryG.children[0]);
+  while (carryG.children.length){ const old = carryG.children[0]; carryG.remove(old); gpuFreeObj(old); }
   carryG.add(dishModel(M_.recipe.id, M_.burnt)); carryG.visible = true;
   tone(784,.1,'triangle',.12); tone(1046,.18,'triangle',.1,.08);
   toast(`Prato montado · sirva na mesa ${M_.table.i + 1}`, 'good');
@@ -2240,7 +2270,7 @@ function vipLeave(g, t){ t.guest = null; g.table = null; pose(g, 'stand'); g.g.p
 function cleanupMission(){
   MISSION.active = false; MISSION.cooking = false;
   pan.visible = false; chopPieces.visible = false; carryG.visible = false;
-  if (tableDish){ if (tableDish.parent) tableDish.parent.remove(tableDish); tableDish = null; }
+  if (tableDish){ if (tableDish.parent) tableDish.parent.remove(tableDish); gpuFreeObj(tableDish); tableDish = null; }
   if (CHOP.active){ CHOP.active = false; $('chop').hidden = true; }
 }
 function failMission(reason){
@@ -2474,9 +2504,9 @@ class CrisisSystem {
     ];
     const k = pick(kinds), g = new THREE.Group();
     g.position.copy(k.at()); scene.add(g);
-    const c = {id:k.id, name:k.name, g, parts:[], bulb:null, tag:textSprite(.3)};
+    const c = {id:k.id, name:k.name, g, parts:[], bulb:null, tag:null};
+    c.res = gpuCollect(() => { c.tag = textSprite(.3); this.buildProp(c); });
     c.tag.position.y = 2.9; g.add(c.tag); c.tag.userData.set('⚠ ' + k.name, 'rgba(232,106,90,.95)', '#FFFFFF');
-    this.buildProp(c);
     interact(g, {label:() => `[E] Consertar · ${k.name}`, ok:() => true, action:() => this.startRepair(c)});
     this.list.push(c); SFX.error();
     toast(`Emergência: ${k.name} · conserte antes que os hóspedes reclamem`, 'bad');
@@ -2522,7 +2552,7 @@ class CrisisSystem {
   cancelRepair(){ this.repair = null; $('repair').hidden = true; }
   remove(c){
     const i = this.list.indexOf(c); if (i >= 0) this.list.splice(i, 1);
-    scene.remove(c.g); unregister(c.g); c.g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    scene.remove(c.g); unregister(c.g); c.g.traverse(o => { if (o.geometry && !o.isSprite) o.geometry.dispose(); }); gpuFree(c.res);
   }
 }
 const CRISES = new CrisisSystem();
@@ -2613,7 +2643,7 @@ const PERSONAS = {
     B(.26,.1,.08, M(0x3BA9C9,{transparent:true, opacity:.6}), 0, 1.74, .17, b); B(.12,.1,.1, MAT.black, .2, 1.0, .25, b);
   }},
 };
-const decorateClient = (n, persona) => PERSONAS[persona].decor(n.body, n.g);
+const decorateClient = (n, persona) => { n.res.push(...gpuCollect(() => PERSONAS[persona].decor(n.body, n.g))); };
 
 /* ============================================================
    FACHADA EXTERNA · Ruína (tijolos, tábuas e entorno sujo), Moderno (bege e vidro)
@@ -2624,7 +2654,10 @@ const facadeSolids = [];
 const FX = {
   dirt: tex(256, (g,s) => { g.fillStyle = '#7A5A3A'; g.fillRect(0,0,s,s); seed = 42; noise(g, s, s, .3, 4000); }),
 };
-function buildFacade(stage){
+/* Fachada refeita por etapa: a versão anterior tem seus materiais e texturas liberados */
+let FACADE_RES = [];
+function buildFacade(stage){ gpuFree(FACADE_RES); FACADE_RES = gpuCollect(() => buildFacadeInner(stage)); }
+function buildFacadeInner(stage){
   while (FACADE.children.length){ const c = FACADE.children.pop(); c.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   facadeSolids.splice(0).forEach(s => { const i = solids.indexOf(s); if (i >= 0) solids.splice(i, 1); });
   EXTERIOR.forEach(o => { o.visible = stage > 0; });

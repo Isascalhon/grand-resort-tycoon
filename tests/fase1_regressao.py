@@ -123,6 +123,36 @@ def run():
         check('camareira ignora quarto com hóspede', r['state'] == 'idle' and r['roomMaid'] is False, str(r))
         b.close()
 
+        # 8) memória WebGL: refazer quartos, fachada e hóspedes repetidamente não aumenta texturas na GPU
+        b, pg = new_page(p, errors)
+        pg.goto(URL, wait_until='load')
+        r = pg.evaluate("""() => {
+          const frame = () => renderer.render(scene, camera);
+          const persona = Object.keys(PERSONAS)[0];
+          const cycle = i => {
+            buildRoom(ROOMS[0]); buildFacade(i % 2);
+            const n = makeNPC('guest'); decorateClient(n, persona); frame(); removeNPC(n);
+          };
+          for (let i = 0; i < 5; i++) cycle(i);
+          frame();
+          const t0 = renderer.info.memory.textures;
+          for (let i = 0; i < 30; i++) cycle(i);
+          frame();
+          return {t0, t1: renderer.info.memory.textures};
+        }""")
+        check('texturas WebGL não crescem ao refazer objetos', r['t1'] - r['t0'] <= 3, str(r))
+        b.close()
+
+        # 9) histerese da etapa: oscilar perto de um limiar não muda a fachada
+        b, pg = new_page(p, errors)
+        pg.goto(URL, wait_until='load')
+        r = pg.evaluate("""() => {
+          const seq = [42, 40, 39, 38.9, 36, 38.9, 42];
+          return seq.map(rep => { G.rep = rep; return stageIndex(); });
+        }""")
+        check('etapa não oscila perto do limiar', r == [2, 2, 2, 2, 1, 1, 2], str(r))
+        b.close()
+
     check('sem erros de página', not errors, '; '.join(errors))
 
 
