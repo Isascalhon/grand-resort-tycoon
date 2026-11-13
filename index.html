@@ -821,6 +821,8 @@ function drawSign(room){
 }
 function upgradeRoom(room){
   if (room.upper) return buySuite(room);
+  if (room.owned && room.level >= 3){ SFX.error(); toast(`Quarto ${room.id} já está no nível máximo`, 'bad'); return; }
+  if (room.owned && (room.guest || room.state !== 'free')){ SFX.error(); toast(`Quarto ${room.id} está ${room.guest ? 'ocupado' : 'sujo'}: aguarde antes da obra`, 'bad'); return; }
   const c = signCost(room);
   const gate = gateOf(room);
   if (gate){ SFX.error(); toast(`Obra bloqueada · ${gate}`, 'bad'); return; }
@@ -2065,7 +2067,11 @@ function renderChef(){
     : f >= 2 ? 'Os hóspedes adoraram! Que tal tentar uma receita nova?'
     : 'Olá! Eu sou a Maria. Vamos preparar algo especial para um hóspede? Pratos de 5 estrelas me deixam feliz e liberam receitas novas.';
   let html = `<p class="say">“${say}”</p>`;
-  if (MISSION.active) html += `<div class="role" style="margin-bottom:10px"><h3>Em preparo: ${MISSION.recipe.name}</h3><p>${stepHint()}</p><span class="meta">Mesa ${MISSION.table.i + 1} · ${mmss(MISSION.recipe.limit - MISSION.elapsed)} restantes</span><div class="btns"><button id="chefCancel" class="ghost">Cancelar receita</button></div></div>`;
+  if (MISSION.active){
+    // depois de servido, o prato já está com o cliente: só dá para aguardar a avaliação
+    const served = MISSION.step === 'eat';
+    html += `<div class="role" style="margin-bottom:10px"><h3>Em preparo: ${MISSION.recipe.name}</h3><p>${stepHint()}</p><span class="meta">Mesa ${MISSION.table.i + 1} · ${mmss(MISSION.recipe.limit - MISSION.elapsed)} restantes</span><div class="btns"><button id="chefCancel" class="ghost" ${served ? 'disabled' : ''}>${served ? 'Prato servido' : 'Cancelar receita'}</button></div></div>`;
+  }
   html += '<div class="staff">' + RECIPES.map((r,i) => {
     const locked = f < r.unlock;
     return `<div class="role${locked ? ' locked' : ''}"><h3>${r.name}</h3><p>${r.need.map(k => INGR[k].name).join(' · ')}</p>
@@ -2230,7 +2236,10 @@ function cleanupMission(){
 }
 function failMission(reason){
   const M_ = MISSION; if (!M_.active) return;
+  // prato já servido: a avaliação está agendada no cliente; cancelar aqui pagaria duas vezes ou deixaria pagamento órfão
+  if (M_.step === 'eat' && reason !== 'time') return;
   const g = M_.guest, t = M_.table;
+  if (g) g.onTimer = null;
   toast(reason === 'time' ? `Tempo esgotado: ${M_.recipe.name} · o cliente ficou chateado` : `Receita cancelada: ${M_.recipe.name}`, 'bad');
   addRep(reason === 'time' ? -3 : -1); SFX.error();
   cleanupMission();
@@ -3031,6 +3040,7 @@ class SaveSystem {
             plus:G.plus, partners:G.partners, rooms:ROOMS.map(r => ({owned:r.owned, level:r.level})), upper:UPPER.map(r => ({owned:r.owned, level:r.level})), log:G.log.slice(0, 40)};
   }
   save(){ try { localStorage.setItem(this.key, JSON.stringify(this.snapshot())); } catch(e){ /* sem armazenamento: o jogo segue sem salvar */ } }
+  raw(){ try { return localStorage.getItem(this.key); } catch(e){ return null; } }
   read(){ try { const d = JSON.parse(localStorage.getItem(this.key)); return d && d.v === this.version ? d : null; } catch(e){ return null; } }
   clear(){ try { localStorage.removeItem(this.key); } catch(e){ /* nada a apagar */ } }
   load(){
@@ -3066,28 +3076,41 @@ const GAME = new Game();
    ============================================================ */
 const clock3 = new THREE.Clock();
 let T = 0;
+/* Erros do quadro não podem congelar o jogo: são registrados, avisados e o laço continua */
+let loopErrors = 0;
+function reportError(where, e){
+  loopErrors++; console.error(`[${where}]`, e);
+  if (loopErrors <= 3) toast('Algo inesperado aconteceu, mas o jogo continua. Detalhes no console.', 'bad');
+}
 function loop(){
-  const dt = Math.min(.05, clock3.getDelta());
-  const run = !G.paused && !pcOpen;
-  T += dt;
-  if (run) simulate(dt);
-  GAME.player.update(dt);
-  ANIM.forEach(f => f(run ? dt : 0, T));
-  GAME.interaction.update();
-  hud(dt);
-  chopTick();
-  renderMission();
-  renderer.render(scene, camera);
+  try {
+    const dt = Math.min(.05, clock3.getDelta());
+    const run = !G.paused && !pcOpen;
+    T += dt;
+    if (run) simulate(dt);
+    GAME.player.update(dt);
+    ANIM.forEach(f => f(run ? dt : 0, T));
+    GAME.interaction.update();
+    hud(dt);
+    chopTick();
+    renderMission();
+    renderer.render(scene, camera);
+  } catch (e){ reportError('loop', e); }
   requestAnimationFrame(loop);
 }
 
 /* Início: carrega o progresso salvo ou começa na Ruína (quarto 101 sujo, único quarto operacional) */
+/* Se existe progresso que não pôde ser lido (versão diferente ou dados corrompidos), ele é preservado:
+   o autosave fica desligado até o jogador escolher apagar, e um aviso explica a situação */
+const rawSave = GAME.save.raw();
 const hadSave = GAME.save.load();
+const saveBlocked = !hadSave && rawSave !== null;
 if (!hadSave) dirtyRoom(ROOMS[0]);
-else { $('play').textContent = 'Continuar'; $('lockNote').textContent = 'Progresso salvo carregado. Você volta exatamente de onde parou.'; $('resetSave').hidden = false; }
-$('resetSave').onclick = () => { GAME.save.clear(); location.reload(); };
-setInterval(() => GAME.save.save(), 10000);
-addEventListener('beforeunload', () => GAME.save.save());
+if (hadSave){ $('play').textContent = 'Continuar'; $('lockNote').textContent = 'Progresso salvo carregado. Você volta exatamente de onde parou.'; $('resetSave').hidden = false; }
+if (saveBlocked){ $('lockNote').textContent = 'Existe um progresso salvo que não pôde ser lido. Ele foi preservado e não será sobrescrito. Use "Apagar progresso" para começar do zero.'; $('resetSave').hidden = false; }
+$('resetSave').onclick = () => { if (confirm('Apagar o progresso salvo e começar do zero?')) { GAME.save.clear(); location.reload(); } };
+setInterval(() => { if (!saveBlocked) GAME.save.save(); }, 10000);
+addEventListener('beforeunload', () => { if (!saveBlocked) GAME.save.save(); });
 camera.lookAt(0, 1.65, 0);
 loop();
 </script>
