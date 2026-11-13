@@ -502,7 +502,7 @@ const NAMES = ['Ana Lima','Bruno Reis','Carla Dias','Diego Melo','Elisa Faria','
 /* ============================================================
    ESTADO · G é o estado de domínio (serializável). rep = pontos, 100 pontos = 10 estrelas
    ============================================================ */
-const G = {money:1500, rep:0, day:1, t:0, elapsed:0, dayLen:240, incomeToday:0, expenseToday:0, incomeLog:[], log:[],
+const G = {money:1500, rep:0, day:1, t:0, elapsed:0, dayLen:240, incomeToday:0, expenseToday:0, debt:0, incomeLog:[], log:[],
            staff:{recep:0, maid:0, chef:0, waiter:0}, staffLv:{recep:1, maid:1}, queue:[], guests:[], served:0, paused:true,
            upg:{bar:false, floor:false, light:false}, friend:0, branch:'city', owned:['city'], plus:{}, partners:{adsT:0, supplier:false}};
 const ANIM = [];   // callbacks por quadro: (dt, time) => {}
@@ -936,6 +936,8 @@ function buildRoom(room){
 /* Sujeira: manchas, lixo e teias que o jogador limpa com E */
 function dirtyRoom(room, count){
   room.state = 'dirty';
+  // já há sujeira: não empilha mais (checkout repetido ou carregamento não duplicam teias e manchas)
+  if (!count && room.dirt.length) return;
   const n = count || 3 + Math.floor(Math.random()*3);
   for (let i = 0; i < n; i++){
     const u = (Math.random() - .5)*6.5, v = 1.4 + Math.random()*3.4;
@@ -1564,7 +1566,8 @@ function staffTick(n, dt){
   if (n.role === 'maid'){
     if (n.state === 'idle'){
       n.cool = (n.cool || 0) - dt;
-      const room = n.cool <= 0 && allRooms().find(r => r.owned && r.state === 'dirty' && !r.maid && r.level <= G.staffLv.maid);
+      // a camareira só entra em quarto sujo, sem outra camareira e sem hóspede dentro
+      const room = n.cool <= 0 && allRooms().find(r => r.owned && r.state === 'dirty' && !r.maid && !r.guest && r.level <= G.staffLv.maid);
       if (room){ room.maid = n; n.room = room; n.state = 'going'; toggleDoor(room, true); n.tag.userData.set(`Limpando ${room.id}`, 'rgba(43,179,177,.95)', '#10302F'); route(n, roomNode(room), [], () => { n.state = 'cleaning'; n.work = 0; }); }
     } else if (n.state === 'cleaning'){
       n.work += dt; if (!RM.matches) n.arms[1].rotation.x = -1 + Math.sin(T*10)*.5;
@@ -1596,8 +1599,14 @@ function spawnBartender(){ const b = makeNPC('bartender'); b.g.position.set(BART
 const pad2 = v => String(v).padStart(2, '0');
 function clockStr(){ const m = 8*60 + Math.floor(G.t/G.dayLen*14*60); return `${pad2(Math.floor(m/60))}:${pad2(m % 60)}`; }
 const wagesPerDay = () => Object.keys(ROLES).reduce((s,k) => s + ROLES[k].wage*G.staff[k], 0);
+/* Salários: paga o que o caixa cobre; o restante vira dívida que se soma ao próximo dia e reduz a reputação.
+   O caixa nunca fica negativo por salário. */
 function endDay(){
-  const w = wagesPerDay(); if (w) addMoney(-w, `Salários do dia ${G.day}`);
+  const due = wagesPerDay() + (G.debt || 0);
+  const paid = Math.min(due, Math.max(0, G.money));
+  if (paid > 0) addMoney(-paid, `Salários do dia ${G.day}`);
+  G.debt = Math.round(due - paid);
+  if (G.debt > 0){ addRep(-2); toast(`Caixa insuficiente: ${fmt(G.debt)} de salários ficam pendentes e reduzem a reputação`, 'bad'); }
   toast(`Fim do dia ${G.day} · receita ${fmt(G.incomeToday)} · despesas ${fmt(G.expenseToday)}`);
   G.day++; G.t = 0; G.incomeToday = 0; G.expenseToday = 0;
   GAME.save.save();
@@ -3036,7 +3045,7 @@ class SaveSystem {
   constructor(key){ this.key = key; this.version = 2; }
   snapshot(){
     return {v:this.version, money:G.money, rep:G.rep, day:G.day, t:G.t, elapsed:G.elapsed, incomeToday:G.incomeToday, expenseToday:G.expenseToday,
-            served:G.served, friend:G.friend, guestSeq, upg:G.upg, staff:G.staff, staffLv:G.staffLv, branch:G.branch, owned:G.owned,
+            served:G.served, debt:G.debt, friend:G.friend, guestSeq, upg:G.upg, staff:G.staff, staffLv:G.staffLv, branch:G.branch, owned:G.owned,
             plus:G.plus, partners:G.partners, rooms:ROOMS.map(r => ({owned:r.owned, level:r.level})), upper:UPPER.map(r => ({owned:r.owned, level:r.level})), log:G.log.slice(0, 40)};
   }
   save(){ try { localStorage.setItem(this.key, JSON.stringify(this.snapshot())); } catch(e){ /* sem armazenamento: o jogo segue sem salvar */ } }
@@ -3047,7 +3056,7 @@ class SaveSystem {
     const d = this.read(); if (!d) return false;
     try {
       Object.assign(G, {money:d.money ?? G.money, rep:d.rep ?? 0, day:d.day ?? 1, t:d.t ?? 0, elapsed:d.elapsed ?? 0, incomeToday:d.incomeToday ?? 0,
-                        expenseToday:d.expenseToday ?? 0, served:d.served ?? 0, friend:d.friend ?? 0, log:d.log || [], branch:d.branch || 'city',
+                        expenseToday:d.expenseToday ?? 0, served:d.served ?? 0, debt:Number.isFinite(d.debt) && d.debt >= 0 ? d.debt : 0, friend:d.friend ?? 0, log:d.log || [], branch:d.branch || 'city',
                         owned:d.owned || ['city'], plus:d.plus || {}, partners:Object.assign({adsT:0, supplier:false}, d.partners)});
       guestSeq = d.guestSeq || 0;
       G.upg = Object.assign({bar:false, floor:false, light:false}, d.upg);

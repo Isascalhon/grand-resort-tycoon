@@ -80,6 +80,49 @@ def run():
         check('obra em quarto ocupado é recusada', r['money'] == 0 and r['level'] == 0, str(r))
         b.close()
 
+        # 5) salário com caixa insuficiente: o caixa não fica negativo, o restante vira dívida e reduz a reputação
+        b, pg = new_page(p, errors)
+        pg.goto(URL, wait_until='load')
+        r = pg.evaluate("""() => {
+          G.staff.recep = Math.max(G.staff.recep, 1);
+          const w = wagesPerDay();
+          G.money = Math.floor(w / 2); G.debt = 0; G.rep = 20;
+          endDay();
+          return {wages: w, money: G.money, debt: G.debt, rep: G.rep};
+        }""")
+        falta = r['wages'] - (r['wages'] // 2)
+        check('salário não deixa caixa negativo', r['wages'] > 0 and r['money'] == 0, str(r))
+        check('salário faltante vira dívida e reduz reputação', r['debt'] == falta and r['rep'] == 18, str(r))
+        b.close()
+
+        # 6) sujeira não se duplica em checkout repetido
+        b, pg = new_page(p, errors)
+        pg.goto(URL, wait_until='load')
+        r = pg.evaluate("""() => {
+          const room = ROOMS[1]; room.dirt.length = 0;
+          dirtyRoom(room); const n1 = room.dirt.length;
+          dirtyRoom(room); const n2 = room.dirt.length;
+          return {n1, n2};
+        }""")
+        check('sujeira não se duplica', r['n1'] > 0 and r['n1'] == r['n2'], str(r))
+        b.close()
+
+        # 7) camareira não entra em quarto com hóspede
+        b, pg = new_page(p, errors)
+        pg.goto(URL, wait_until='load')
+        r = pg.evaluate("""() => {
+          ROOMS.forEach(x => { x.state = 'free'; x.dirt.length = 0; });
+          const room = ROOMS[0]; room.owned = true; room.state = 'dirty'; room.guest = {fake: true};
+          room.dirt.length = 0; dirtyRoom(room, 3);
+          const maid = makeNPC('maid'); maid.role = 'maid'; maid.state = 'idle'; maid.cool = 0; maid.work = 0;
+          maid.g.position.set(NODES.CW[0], 0, NODES.CW[1]); maid.at = 'CW';
+          G.staffLv.maid = 2;
+          staffTick(maid, .05);
+          return {state: maid.state, roomMaid: !!room.maid};
+        }""")
+        check('camareira ignora quarto com hóspede', r['state'] == 'idle' and r['roomMaid'] is False, str(r))
+        b.close()
+
     check('sem erros de página', not errors, '; '.join(errors))
 
 
