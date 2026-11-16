@@ -1,0 +1,38 @@
+[
+  {
+    "id": "pacifico",
+    "family": "Pacifico",
+    "use": "Letreiros em script",
+    "file": "pacifico.typeface.json",
+    "license": "OFL-1.1",
+    "licenseFile": "pacifico-OFL.txt",
+    "copyright": "Copyright 2018 The Pacifico Project Authors (https://github.com/googlefonts/Pacifico)",
+    "renamed": false,
+    "source": "@fontsource/pacifico@5.3.0 (pacifico-latin-400-normal.woff)",
+    "glyphs": 224
+  },
+  {
+    "id": "gloock",
+    "family": "Gloock",
+    "use": "Letreiros serifados (display)",
+    "file": "gloock.typeface.json",
+    "license": "OFL-1.1",
+    "licenseFile": "gloock-OFL.txt",
+    "copyright": "Copyright 2022 The Gloock Project Authors (https://github.com/duartp/gloock)",
+    "renamed": false,
+    "source": "@fontsource/gloock@5.3.0 (gloock-latin-400-normal.woff)",
+    "glyphs": 223
+  },
+  {
+    "id": "outfit-bold",
+    "family": "Outfit",
+    "use": "Placas e sinalização",
+    "file": "outfit-bold.typeface.json",
+    "license": "OFL-1.1",
+    "licenseFile": "outfit-bold-OFL.txt",
+    "copyright": "Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts)",
+    "renamed": false,
+    "source": "@fontsource/outfit@5.3.0 (outfit-latin-700-normal.woff)",
+    "glyphs": 223
+  }
+]
