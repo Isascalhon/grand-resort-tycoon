@@ -11,24 +11,38 @@ LEGACY = {
     'upper': [{'owned': True, 'level': 2}, {'owned': False, 'level': 0}, {'owned': False, 'level': 0}], 'log': [],
 }
 SEED = json.dumps(LEGACY)
+CHROMIUM_ARGS = ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist']
+
+
+def wait_ready(pg, console):
+    """Espera o jogo iniciar; se o boot falhar, mostra o erro real em vez de só esgotar o tempo.
+    polling em ms (setTimeout): o padrão 'raf' nunca repete a checagem, porque o teste anula o requestAnimationFrame."""
+    try:
+        pg.wait_for_function('window.__GAME_READY__ === true || !!window.__GAME_BOOT_ERROR__', timeout=30000, polling=100)
+    except Exception as e:
+        raise RuntimeError(f'o jogo não iniciou em 30 s; console: {" / ".join(console[-6:])}') from e
+    err = pg.evaluate('() => window.__GAME_BOOT_ERROR__ || null')
+    if err:
+        raise RuntimeError(f'o jogo não iniciou: {err}')
 
 
 def run(base_url):
-    results, errors = [], []
+    results, errors, console = [], [], []
 
     def check(name, ok, detail=''):
         results.append((name, bool(ok), detail))
 
     with sync_playwright() as p:
-        b = p.chromium.launch(args=['--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'])
+        b = p.chromium.launch(args=CHROMIUM_ARGS)
         ctx = b.new_context(viewport={'width': 640, 'height': 360})
         # o save do jogo atual existe antes de qualquer script do jogo rodar
         ctx.add_init_script(f"""window.requestAnimationFrame = () => 0;
           if (!localStorage.getItem('grand_resort_save')) localStorage.setItem('grand_resort_save', {json.dumps(SEED)});""")
         pg = ctx.new_page()
         pg.on('pageerror', lambda e: errors.append(str(e)))
+        pg.on('console', lambda m: console.append(f'{m.type}: {m.text}'[:400]) if m.type in ('error', 'warning') else None)
         pg.goto(base_url + 'game.html?test=1', wait_until='load')
-        pg.wait_for_function('window.__GAME_READY__ === true', timeout=30000)
+        wait_ready(pg, console)
 
         r = pg.evaluate("""() => { const g = __GAME__; return {
             origin: g.result.origin, cash: g.state.economy.cash, rooms: g.state.hotel.rooms.map(r => r.id + ':' + r.category),
@@ -45,7 +59,7 @@ def run(base_url):
 
         saved = pg.evaluate("async () => { await __GAME__.saveSlot('manual-1'); return __GAME__.state.clock.day; }")
         pg.reload(wait_until='load')
-        pg.wait_for_function('window.__GAME_READY__ === true', timeout=30000)
+        wait_ready(pg, console)
         loaded = pg.evaluate("async () => { const s = await __GAME__.loadSlot('manual-1'); return s && s.clock.day; }")
         check('save manual em IndexedDB sobrevive ao recarregar', loaded == saved, f'salvo={saved} lido={loaded}')
 
@@ -59,7 +73,7 @@ def run(base_url):
         # save automático ilegível: é guardado com outro nome e nada é apagado
         pg.evaluate("async () => __GAME__.saves.put({ slot: 'auto', version: 3, state: { version: 99 } })")
         pg.reload(wait_until='load')
-        pg.wait_for_function('window.__GAME_READY__ === true', timeout=30000)
+        wait_ready(pg, console)
         r = pg.evaluate("""async () => { const list = await __GAME__.saves.list();
             return { warn: __GAME__.result.warnings.join(' | '), origin: __GAME__.result.origin,
                      slots: list.map(x => x.slot) }; }""")

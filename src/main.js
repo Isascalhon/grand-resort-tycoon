@@ -142,5 +142,6 @@ async function boot() {
 
 boot().catch(e => {
   console.error(e);
+  if (testMode) window.__GAME_BOOT_ERROR__ = String(e?.stack || e);
   document.getElementById('ui').innerHTML = `<section class="card"><h1 class="title">Ops</h1><p class="lead">O jogo não conseguiu iniciar: ${escapeHtml(e.message)}</p><a class="btn" href="./index.html">Jogar a versão atual</a></section>`;
 });

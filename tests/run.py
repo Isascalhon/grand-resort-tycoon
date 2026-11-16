@@ -15,6 +15,10 @@ import sys
 import time
 import urllib.request
 
+for _stream in (sys.stdout, sys.stderr):   # acentos legíveis também quando a saída vai para um pipe
+    _stream.reconfigure(encoding='utf-8', errors='replace')
+os.environ.setdefault('PYTHONIOENCODING', 'utf-8')
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 PORT = 4173
 BASE = f'http://localhost:{PORT}/'
