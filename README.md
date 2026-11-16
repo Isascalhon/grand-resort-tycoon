@@ -4,9 +4,23 @@ Um tycoon de hotel e restaurante em primeira pessoa, feito em um único arquivo 
 
 Você é o gerente do resort. Faça o check-in dos hóspedes, limpe os quartos, recolha gorjetas e vendas da piscina, contrate e treine a equipe e compre melhorias. Na cozinha, a Chef Maria tem receitas para você preparar com as próprias mãos.
 
-## Como jogar
+## Grand Resort 2.0 (em construção)
 
-Abra o `index.html` em um navegador moderno (Chrome, Edge ou Firefox) com internet, porque o Three.js é carregado por CDN.
+O jogo está sendo refeito com three.js moderno: fachada monumental, prédio de até 10 andares com escada e elevadores
+de verdade, cidade com trânsito, quartos detalhados e progressão até o HOTEL PLUS de 10 estrelas. Enquanto isso, o
+jogo atual continua jogável e o seu progresso será importado (o save antigo nunca é apagado).
+
+- **Jogar no Windows:** dê dois cliques em `JOGAR.bat`. Na primeira vez ele instala as dependências (precisa do
+  [Bun](https://bun.sh)); depois prepara o jogo e abre o navegador em `http://localhost:4173/`.
+- **Páginas:** `/` é o jogo atual, `/game.html` o jogo novo e `/prototype.html` o protótipo da fachada.
+- **Desenvolvimento:** `bun install`, `bun --bun run dev` (servidor com recarga), `bun --bun run build`,
+  `bun run assets` (texturas CC0), `bun run fonts` (fontes 3D) e `python tests/run.py` (todos os testes).
+- Documentação: [arquitetura](docs/ARQUITETURA.md), [porte do jogo atual](docs/PORTE.md),
+  [histórico](CHANGELOG.md) e [créditos e licenças](ASSETS.md).
+
+## Como jogar (jogo atual)
+
+Abra o `index.html` em um navegador moderno (Chrome, Edge ou Firefox) com internet, porque o Three.js é carregado por CDN. Também funciona pelo `JOGAR.bat`.
 
 | Tecla / ação | Função |
 | --- | --- |
@@ -39,6 +53,5 @@ A nota de 1 a 5 estrelas depende da precisão, do corte, do ponto e do tempo. No
 
 ## Tecnologia
 
-- HTML, CSS e JavaScript puro
-- [Three.js 0.128.0](https://threejs.org/) via jsDelivr
-- Texturas e modelos feitos por código, sem arquivos externos
+- Jogo atual: HTML, CSS e JavaScript puro, [Three.js 0.128.0](https://threejs.org/) via jsDelivr, texturas e modelos feitos por código.
+- Grand Resort 2.0: Vite 8, three.js 0.187, three-mesh-bvh, Bun; texturas PBR CC0 da Poly Haven e fontes OFL.
