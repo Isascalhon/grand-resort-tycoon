@@ -13,6 +13,27 @@ O jogo usa apenas material com licença livre (CC0, OFL ou MIT). Este arquivo é
 | opentype.js | MIT | opentype.js contributors | Conversão das fontes para texto 3D (só no build) | https://github.com/opentypejs/opentype.js |
 | Vite | MIT | VoidZero Inc. e colaboradores | Empacotamento (só no build) | https://github.com/vitejs/vite |
 
+## Texturas PBR e HDRIs — Poly Haven (CC0)
+
+Domínio público ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)); os créditos abaixo são cortesia.
+
+| Asset | Tipo | Autoria | Arquivos | Página |
+| --- | --- | --- | --- | --- |
+| Cobblestone Street Night (`cobblestone_street_night`) | HDRI | Greg Zaal, Jenelle van Heerden | hdr 1k | https://polyhaven.com/a/cobblestone_street_night |
+| Venice Sunset (`venice_sunset`) | HDRI | Greg Zaal | hdr 1k | https://polyhaven.com/a/venice_sunset |
+| Wide Street 01 (`wide_street_01`) | HDRI | Sergej Majboroda | hdr 1k | https://polyhaven.com/a/wide_street_01 |
+| Asphalt 02 (`asphalt_02`) | textura | Rob Tuytel | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/asphalt_02 |
+| Bark Brown 02 (`bark_brown_02`) | textura | Rob Tuytel | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/bark_brown_02 |
+| Concrete Floor 02 (`concrete_floor_02`) | textura | Rob Tuytel | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/concrete_floor_02 |
+| Concrete Pavers (`concrete_pavers`) | textura | Amal Kumar | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/concrete_pavers |
+| Large Grey Tiles (`large_grey_tiles`) | textura | Rob Tuytel | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/large_grey_tiles |
+| Leafy Grass (`leafy_grass`) | textura | Charlotte Baglioni | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/leafy_grass |
+| Marble 01 (`marble_01`) | textura | Rob Tuytel | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/marble_01 |
+| Palm Bark (`palm_bark`) | textura | Charlotte Baglioni | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/palm_bark |
+| Pine Bark (`pine_bark`) | textura | Dimitrios Savva | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/pine_bark |
+| Terrazzo Tiles (`terrazzo_tiles`) | textura | Amal Kumar | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/terrazzo_tiles |
+| White Stucco (`white_stucco`) | textura | Amal Kumar | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/white_stucco |
+
 ## Fontes (SIL Open Font License 1.1)
 
 Interface: Gloock e Outfit, via `@fontsource` (arquivos WOFF/WOFF2 empacotados pelo Vite).

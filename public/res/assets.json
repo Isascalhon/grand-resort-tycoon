@@ -1,0 +1,390 @@
+{
+  "source": "Poly Haven (https://polyhaven.com) — CC0 1.0",
+  "items": [
+    {
+      "slug": "cobblestone_street_night",
+      "name": "Cobblestone Street Night",
+      "type": "hdri",
+      "group": "exterior",
+      "authors": [
+        "Greg Zaal",
+        "Jenelle van Heerden"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "hdr",
+          "path": "hdri/cobblestone_street_night.hdr",
+          "md5": "38d828b13e9ac07ab6fa80a1255c4459",
+          "size": 1760191
+        }
+      ]
+    },
+    {
+      "slug": "venice_sunset",
+      "name": "Venice Sunset",
+      "type": "hdri",
+      "group": "exterior",
+      "authors": [
+        "Greg Zaal"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "hdr",
+          "path": "hdri/venice_sunset.hdr",
+          "md5": "a5ec4d30fc3421c214a17b208fb66d5f",
+          "size": 1440400
+        }
+      ]
+    },
+    {
+      "slug": "wide_street_01",
+      "name": "Wide Street 01",
+      "type": "hdri",
+      "group": "exterior",
+      "authors": [
+        "Sergej Majboroda"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "hdr",
+          "path": "hdri/wide_street_01.hdr",
+          "md5": "5138acea259b7b72b0dce4fdff0d27ce",
+          "size": 1474393
+        }
+      ]
+    },
+    {
+      "slug": "asphalt_02",
+      "name": "Asphalt 02",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Rob Tuytel"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/asphalt_02/diff.jpg",
+          "md5": "fa19772d4817754c3efab708c651f5a8",
+          "size": 731707
+        },
+        {
+          "map": "nor",
+          "path": "tex/asphalt_02/nor.jpg",
+          "md5": "338da8de636ea36133170578cac82e8e",
+          "size": 1240122
+        },
+        {
+          "map": "arm",
+          "path": "tex/asphalt_02/arm.jpg",
+          "md5": "33820445f43af5e5ee484674b6939271",
+          "size": 296770
+        }
+      ]
+    },
+    {
+      "slug": "bark_brown_02",
+      "name": "Bark Brown 02",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Rob Tuytel"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/bark_brown_02/diff.jpg",
+          "md5": "6669cca520594bdca19f94084984ab72",
+          "size": 659592
+        },
+        {
+          "map": "nor",
+          "path": "tex/bark_brown_02/nor.jpg",
+          "md5": "1cad3fe0349a44df2d4d1c2859c79920",
+          "size": 1015623
+        },
+        {
+          "map": "arm",
+          "path": "tex/bark_brown_02/arm.jpg",
+          "md5": "6a566390a8930454c9ad4056273b08fb",
+          "size": 232742
+        }
+      ]
+    },
+    {
+      "slug": "concrete_floor_02",
+      "name": "Concrete Floor 02",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Rob Tuytel"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/concrete_floor_02/diff.jpg",
+          "md5": "1cfee53d2f82fa59726ab7ae6a2e8c09",
+          "size": 776097
+        },
+        {
+          "map": "nor",
+          "path": "tex/concrete_floor_02/nor.jpg",
+          "md5": "c2065fd81f571f4e39163ea5661128fb",
+          "size": 192757
+        },
+        {
+          "map": "arm",
+          "path": "tex/concrete_floor_02/arm.jpg",
+          "md5": "5995ee8efda4e7966a277b3d9049eb2b",
+          "size": 146483
+        }
+      ]
+    },
+    {
+      "slug": "concrete_pavers",
+      "name": "Concrete Pavers",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Amal Kumar"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/concrete_pavers/diff.jpg",
+          "md5": "377ad5aeb4c4abd79ce32f92dc8ddccd",
+          "size": 757968
+        },
+        {
+          "map": "nor",
+          "path": "tex/concrete_pavers/nor.jpg",
+          "md5": "9288d26d449427bc468a13203a67ff73",
+          "size": 918300
+        },
+        {
+          "map": "arm",
+          "path": "tex/concrete_pavers/arm.jpg",
+          "md5": "1479b6de19dee8ea9424f8af25adcfd1",
+          "size": 697269
+        }
+      ]
+    },
+    {
+      "slug": "large_grey_tiles",
+      "name": "Large Grey Tiles",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Rob Tuytel"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/large_grey_tiles/diff.jpg",
+          "md5": "33a074b6f6d9b306eabd905fcf111fc6",
+          "size": 445476
+        },
+        {
+          "map": "nor",
+          "path": "tex/large_grey_tiles/nor.jpg",
+          "md5": "9a555ee74c329977bb0da56e6b02c5d6",
+          "size": 388446
+        },
+        {
+          "map": "arm",
+          "path": "tex/large_grey_tiles/arm.jpg",
+          "md5": "0b055808ba51e852232b72028cf71160",
+          "size": 187910
+        }
+      ]
+    },
+    {
+      "slug": "leafy_grass",
+      "name": "Leafy Grass",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Charlotte Baglioni"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/leafy_grass/diff.jpg",
+          "md5": "0dbc071e91d6905edfcfbe8eb785a1ab",
+          "size": 1195394
+        },
+        {
+          "map": "nor",
+          "path": "tex/leafy_grass/nor.jpg",
+          "md5": "8279e096e204ea326d57a318869f99df",
+          "size": 1466049
+        },
+        {
+          "map": "arm",
+          "path": "tex/leafy_grass/arm.jpg",
+          "md5": "44fb4e40ef0f3425a7d1a14bc328e4d8",
+          "size": 1010081
+        }
+      ]
+    },
+    {
+      "slug": "marble_01",
+      "name": "Marble 01",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Rob Tuytel"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/marble_01/diff.jpg",
+          "md5": "04325ced5018eb8a2e598a4ef69cb176",
+          "size": 305029
+        },
+        {
+          "map": "nor",
+          "path": "tex/marble_01/nor.jpg",
+          "md5": "fa073d722cde733c1bd6cc6e8897c8e3",
+          "size": 110230
+        },
+        {
+          "map": "arm",
+          "path": "tex/marble_01/arm.jpg",
+          "md5": "51017a4e4f320c3b58763c66727d89c1",
+          "size": 54740
+        }
+      ]
+    },
+    {
+      "slug": "palm_bark",
+      "name": "Palm Bark",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Charlotte Baglioni"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/palm_bark/diff.jpg",
+          "md5": "89e6474313f1547e3c12c4b68410ee39",
+          "size": 707281
+        },
+        {
+          "map": "nor",
+          "path": "tex/palm_bark/nor.jpg",
+          "md5": "47c13a26ef585fbb0d93f5593f8f711f",
+          "size": 1307345
+        },
+        {
+          "map": "arm",
+          "path": "tex/palm_bark/arm.jpg",
+          "md5": "94ac0d9506483f206b67e20b3e4b590f",
+          "size": 741466
+        }
+      ]
+    },
+    {
+      "slug": "pine_bark",
+      "name": "Pine Bark",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Dimitrios Savva"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/pine_bark/diff.jpg",
+          "md5": "7bb38cccfc647aeaf2f5b6488c815e75",
+          "size": 837641
+        },
+        {
+          "map": "nor",
+          "path": "tex/pine_bark/nor.jpg",
+          "md5": "7b971070fc986e517b5d2795cec0f4e0",
+          "size": 1178440
+        },
+        {
+          "map": "arm",
+          "path": "tex/pine_bark/arm.jpg",
+          "md5": "8f47278dc2643509cd1f9d9268214097",
+          "size": 810100
+        }
+      ]
+    },
+    {
+      "slug": "terrazzo_tiles",
+      "name": "Terrazzo Tiles",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Amal Kumar"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/terrazzo_tiles/diff.jpg",
+          "md5": "12c27a579c2ed49de854b8a86e33647b",
+          "size": 1166107
+        },
+        {
+          "map": "nor",
+          "path": "tex/terrazzo_tiles/nor.jpg",
+          "md5": "a5f6d05f27db4151227535bdbc82c048",
+          "size": 77954
+        },
+        {
+          "map": "arm",
+          "path": "tex/terrazzo_tiles/arm.jpg",
+          "md5": "843e281304070827482b94ed7da24bc4",
+          "size": 477964
+        }
+      ]
+    },
+    {
+      "slug": "white_stucco",
+      "name": "White Stucco",
+      "type": "texture",
+      "group": "exterior",
+      "authors": [
+        "Amal Kumar"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/white_stucco/diff.jpg",
+          "md5": "34b66656dbf2a90eec29306deb1a20d0",
+          "size": 557550
+        },
+        {
+          "map": "nor",
+          "path": "tex/white_stucco/nor.jpg",
+          "md5": "3e70f3be77f582fd41a9a08c8e8a6e66",
+          "size": 932038
+        },
+        {
+          "map": "arm",
+          "path": "tex/white_stucco/arm.jpg",
+          "md5": "8528cc4a2fe3c4c047161682ecacdf7f",
+          "size": 323604
+        }
+      ]
+    }
+  ]
+}
