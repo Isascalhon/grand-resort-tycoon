@@ -71,6 +71,11 @@ export class MaterialLibrary {
       case 'warmGlow': return this.#glowing(new THREE.MeshBasicMaterial({ color: 0xffd9a8 }), 'colorScale', 1.15, .18);
       // luzes
       case 'lamp': return this.#glowing(new THREE.MeshStandardMaterial({ color: 0xfff1d6, emissive: 0xffd9a0, roughness: .3 }), 'emissiveIntensity', 3.2, .3);
+      case 'tailLight': return this.#glowing(new THREE.MeshStandardMaterial({ color: 0x5a0a10, emissive: 0xff2a2a, roughness: .3 }), 'emissiveIntensity', 2.6, .15);
+      case 'carPaint': return new THREE.MeshPhysicalMaterial({ color: 0xffffff, metalness: .5, roughness: .32, clearcoat: 1, clearcoatRoughness: .06 });
+      case 'carGlass': return new THREE.MeshPhysicalMaterial({ color: 0x14161c, metalness: .2, roughness: .05, envMapIntensity: 1.4 });
+      case 'rubber': return new THREE.MeshStandardMaterial({ color: 0x151515, roughness: .9 });
+      case 'chrome': return new THREE.MeshStandardMaterial({ color: 0xe8e8ec, metalness: 1, roughness: .12 });
       case 'lampCool': return this.#glowing(new THREE.MeshStandardMaterial({ color: 0xf4f1ff, emissive: 0xfff4e6, roughness: .3 }), 'emissiveIntensity', 3, .15);
       case 'lightPool': return this.#glowing(new THREE.MeshBasicMaterial({
         map: radialTexture(), color: 0xffd7a0, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
@@ -81,7 +86,7 @@ export class MaterialLibrary {
       case 'plazaTiles': return this.pbr('large_grey_tiles', { repeat: .2, color: 0xe9e2d6, roughness: .8 });
       case 'concrete': return this.pbr('concrete_floor_02', { repeat: .15 });
       case 'asphalt': return this.pbr('asphalt_02', { repeat: .12 });
-      case 'grass': return this.pbr('leafy_grass', { repeat: .3, color: 0xbfd6a0 });
+      case 'grass': return this.pbr('leafy_grass', { repeat: .3, color: 0x9cc77a });
       case 'soil': return new THREE.MeshStandardMaterial({ color: 0x3b2c22, roughness: 1 });
       case 'paint': return new THREE.MeshStandardMaterial({ color: 0xf1efe8, roughness: .7 });
       case 'paintYellow': return new THREE.MeshStandardMaterial({ color: 0xe8b937, roughness: .7 });

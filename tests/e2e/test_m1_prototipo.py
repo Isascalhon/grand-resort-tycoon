@@ -1,5 +1,5 @@
 """M1 — Protótipo da fachada: inicia sem erros, monta 3, 6 e 10 andares, troca dia e noite, as 6 vistas
-renderizam e o orçamento do preset Média (600 draw calls, 2 M de triângulos) é respeitado.
+renderizam, vegetação com LOD e trânsito funcionam, e o orçamento do preset Média (600 draw calls, 2 M de triângulos) é respeitado.
 Roda contra o `vite preview` com ?test=1 (sem laço contínuo; cada quadro é pedido por renderOnce)."""
 from playwright.sync_api import sync_playwright
 
@@ -62,6 +62,19 @@ def run(base_url):
             let s = 0; for (let i = 0; i < d.length; i += 4) s += .2126 * d[i] + .7152 * d[i + 1] + .0722 * d[i + 2];
             return s / (d.length / 4); }""")
         check('quadro de dia nem preto nem estourado', 60 < lum < 215, f'brilho médio={lum:.0f}')
+
+        # vegetação e trânsito: presentes, com LOD trocando por distância e carros andando
+        r = pg.evaluate("""() => { const P = __PROTO__, V = P.vegetation;
+            const near = V.lodCounts(new P.camera.position.constructor(0, 2, 20));
+            const far = V.lodCounts(new P.camera.position.constructor(0, 400, 900));
+            const x0 = P.traffic.cars.map(c => c.x); P.traffic.update(.5);
+            const moved = P.traffic.cars.filter((c, i) => c.x !== x0[i]).length;
+            return { info: P.info(), near, far, moved }; }""")
+        check('vegetação plantada (árvores, palmeiras e arbustos)', r['info']['plants'] >= 80, str(r['info']['plants']))
+        check('LOD: perto usa o nível alto, longe o baixo', r['near'][0] > r['near'][1] and r['far'][0] == 0 and r['far'][1] > 0,
+              f"perto={r['near']} longe={r['far']}")
+        check('trânsito: carros presentes e andando', r['info']['cars'] >= 20 and r['moved'] >= r['info']['cars'] // 2,
+              f"carros={r['info']['cars']} andaram={r['moved']}")
 
         check('sem erros de página', not errors, ' | '.join(errors[:3]))
         b.close()

@@ -16,6 +16,8 @@ import { Environment } from './rendering/Environment.js';
 import { PostFX } from './rendering/PostFX.js';
 import { buildSite } from './architecture/Site.js';
 import { buildHotelExterior } from './architecture/HotelExterior.js';
+import { buildVegetation } from './vegetation/Vegetation.js';
+import { buildTraffic } from './city/Cars.js';
 import { el, escapeHtml } from './ui/dom.js';
 
 const params = new URLSearchParams(location.search);
@@ -56,6 +58,10 @@ async function boot() {
   bindResize(renderer, camera, (w, h) => post.setSize(w, h));
 
   scene.add(buildSite(mats));
+  const vegetation = buildVegetation(mats);
+  scene.add(vegetation.group);
+  const traffic = buildTraffic(mats);
+  scene.add(traffic.group);
   let hotel = null;
   const state = { floors: Number(params.get('andares')) || 6, hour: 10, view: 'frontal' };
 
@@ -123,12 +129,13 @@ async function boot() {
     floors: state.floors, hour: state.hour, view: state.view, quality: quality.id,
     calls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
     geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,
-    ...hotel.info,
+    ...hotel.info, plants: vegetation.info.plants, cars: traffic.info.cars,
   });
 
   /* Conta as draw calls da cena em si (o pós-processamento soma passes de tela cheia) */
   function renderFrame(dt = 0) {
     hotel.update(dt, camera);
+    vegetation.update(dt, camera, { force: true });
     renderer.info.autoReset = false;
     renderer.info.reset();
     renderer.render(scene, camera);
@@ -142,7 +149,7 @@ async function boot() {
   if (testMode) {
     window.__PROTO__ = {
       VIEWS: Object.keys(VIEWS),
-      scene, renderer, mats, post, env, setView, setTime, setFloors,
+      scene, renderer, mats, post, env, vegetation, traffic, camera, setView, setTime, setFloors,
       renderOnce: () => { renderFrame(0); return { ...info(), ...lastStats }; },
       info: () => ({ ...info(), ...lastStats }),
     };
@@ -161,6 +168,8 @@ async function boot() {
     controls.update(dt);
     renderer.info.reset();
     hotel.update(dt, camera);
+    vegetation.update(dt, camera);
+    traffic.update(dt);
     post.render(dt);
     statsClock += dt;
     if (statsClock > .5) {
