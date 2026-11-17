@@ -1,7 +1,7 @@
 /* Terreno do hotel: gramado, praça de entrada com fonte, calçada com meio-fio, avenida de 4 faixas com faixa de
    pedestres, calçada oposta e postes. Tudo estático, montado em lotes por material. */
 import * as THREE from 'three';
-import { Batch, InstanceSet, mergeParts } from './Batch.js';
+import { Batch, InstanceSet, mergeParts, worldUV } from './Batch.js';
 import { PLAN } from '../data/buildings.js';
 
 const ROAD_HALF = 260;
@@ -12,11 +12,7 @@ export function buildSite(mats) {
   const b = new Batch();
   const { plaza, sidewalk, avenue } = PLAN;
 
-  // gramado amplo (um pouco abaixo do piso para não brigar com a praça)
-  const lawn = new THREE.Mesh(new THREE.PlaneGeometry(3000, 3000), mats.get('grass'));
-  lawn.rotation.x = -Math.PI / 2; lawn.position.set(0, -.02, 0);
-  lawn.receiveShadow = true; lawn.name = 'gramado';
-  group.add(lawn);
+  group.add(buildLawn(mats));
 
   // praça em placas claras, com borda de concreto e base do prédio
   b.span(mats.get('plazaTiles'), plaza.x0, -.1, -26, plaza.x1, .02, plaza.z1);
@@ -63,6 +59,32 @@ export function buildSite(mats) {
 
   group.add(buildStreetLamps(mats));
   return group;
+}
+
+/* Gramado em volta da área construída, recortado para não ficar sob praça, calçadas e avenida: um plano único
+   de 3 km passava por baixo do asfalto e, com a câmera longe e oblíqua, vencia o teste de profundidade */
+const LAWN_HALF = 1500;
+function buildLawn(mats) {
+  const { plaza, sidewalk, avenue } = PLAN;
+  const px0 = plaza.x0 - .4, px1 = plaza.x1 + .4, back = -26.4, front = sidewalk.z0, far = avenue.z1 + 60;
+  const rects = [
+    [-LAWN_HALF, -LAWN_HALF, LAWN_HALF, back],          // atrás do hotel
+    [-LAWN_HALF, back, px0, front],                     // laterais da praça
+    [px1, back, LAWN_HALF, front],
+    [-LAWN_HALF, front, -ROAD_HALF, far],               // além das pontas da avenida
+    [ROAD_HALF, front, LAWN_HALF, far],
+    [-LAWN_HALF, far, LAWN_HALF, LAWN_HALF],            // do outro lado da avenida
+  ];
+  const parts = rects.map(([x0, z0, x1, z1]) => {
+    // subdividido em placas de ~50 m: triângulos de quilômetros perdem precisão de profundidade
+    const w = x1 - x0, d = z1 - z0;
+    return new THREE.PlaneGeometry(w, d, Math.ceil(w / 50), Math.ceil(d / 50)).rotateX(-Math.PI / 2).translate((x0 + x1) / 2, -.02, (z0 + z1) / 2);
+  });
+  const geo = mergeParts(parts);
+  worldUV(geo);
+  const lawn = new THREE.Mesh(geo, mats.get('grass'));
+  lawn.receiveShadow = true; lawn.name = 'gramado';
+  return lawn;
 }
 
 /* Anel (coroa circular) com altura h: borda da fonte */
