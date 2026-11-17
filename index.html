@@ -541,24 +541,62 @@ const GFX = (() => {
 
   /* Céu */
   const sunDir = sun.position.clone().sub(sun.target.position).normalize();
+  let sky = null, oldSky = null;
   if (THREE.Sky){
-    const sky = new THREE.Sky(); sky.scale.setScalar(900);
+    sky = new THREE.Sky(); sky.scale.setScalar(900);
     const u = sky.material.uniforms;
     u.turbidity.value = 2.6; u.rayleigh.value = 1.1; u.mieCoefficient.value = .004; u.mieDirectionalG.value = .82;
     u.sunPosition.value.copy(sunDir);
     scene.add(sky);
   } else {
-    scene.add(new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), new THREE.MeshBasicMaterial({map:TEX.sky, side:THREE.BackSide, fog:false})));
+    oldSky = new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), new THREE.MeshBasicMaterial({map:TEX.sky, side:THREE.BackSide, fog:false}));
+    scene.add(oldSky);
   }
 
-  /* Reflexos: sala neutra de estúdio, atenuada para não clarear demais os interiores */
+  /* Céu noturno: degradê, estrelas que cintilam, lua com halo e brilho da cidade no horizonte. Fica no fundo do
+     buffer de profundidade (z = w) e entra por cima do Sky com o fator noite; de dia some. Sai em linear,
+     porque o ACES e o sRGB são aplicados no fim, uma vez só. */
+  const nightSky = new THREE.Mesh(new THREE.SphereGeometry(400, 40, 20), new THREE.ShaderMaterial({
+    uniforms:{uNight:{value:0}, uTime:{value:0}, uMoon:{value:new THREE.Vector3(-.35, .55, -.76).normalize()}},
+    vertexShader:'varying vec3 vDir; void main(){ vDir = normalize(position); vec4 p = projectionMatrix * modelViewMatrix * vec4(position, 1.0); gl_Position = p.xyww; }',
+    fragmentShader:`
+      uniform float uNight, uTime; uniform vec3 uMoon; varying vec3 vDir;
+      float hash(vec3 p){ p = fract(p * vec3(443.897, 441.423, 437.195)); p += dot(p, p.yzx + 19.19); return fract((p.x + p.y) * p.z); }
+      vec3 stars(vec3 d, float scale, float density){
+        vec3 c = d * scale, cell = floor(c), f = fract(c) - .5; float h = hash(cell);
+        if (h > density) return vec3(0.);
+        vec3 off = vec3(hash(cell + 1.7), hash(cell + 3.1), hash(cell + 5.3)) - .5;
+        float r = length(f - off * .7), mag = pow(hash(cell + 9.2), 6.);
+        float tw = .75 + .25 * sin(uTime * (1.5 + 3. * hash(cell + 2.2)) + h * 50.);
+        return mix(vec3(.75, .85, 1.), vec3(1., .88, .7), hash(cell + 7.7)) * smoothstep(.09, 0., r) * (.35 + 2.2 * mag) * tw;
+      }
+      void main(){
+        vec3 d = normalize(vDir); float up = clamp(d.y, 0., 1.);
+        vec3 col = mix(vec3(.012, .02, .05), vec3(.002, .004, .014), pow(up, .45));
+        col += vec3(.06, .045, .07) * exp(-max(d.y, 0.) * 9.);
+        col += (stars(d, 140., .09) + stars(d, 320., .05) * .6) * smoothstep(.02, .22, d.y);
+        float m = dot(d, uMoon);
+        col = mix(col, vec3(1., .97, .9) * 2.2 * (.82 + .18 * hash(floor(d * 900.))), smoothstep(.99955, .99975, m));
+        col += vec3(.3, .36, .5) * (pow(max(m, 0.), 900.) * .5 + pow(max(m, 0.), 60.) * .12);
+        gl_FragColor = vec4(col, uNight);
+      }`,
+    side:THREE.BackSide, transparent:true, depthWrite:false, fog:false,
+  }));
+  nightSky.frustumCulled = false; nightSky.renderOrder = -1; nightSky.visible = false;
+  scene.add(nightSky);
+
+  /* Reflexos: sala neutra de estúdio, atenuada para não clarear demais os interiores. À noite troca por uma
+     versão bem mais escura (só a textura muda: os materiais não recompilam) */
+  let envDay = null, envNight = null;
   if (THREE.RoomEnvironment){
-    const pm = new THREE.PMREMGenerator(renderer), room = new THREE.RoomEnvironment();
-    room.traverse(o => { if (o.isLight) o.intensity *= .7; if (o.material && o.material.isMeshBasicMaterial) o.material.color.multiplyScalar(.7); });
-    scene.environment = pm.fromScene(room, .04).texture;
+    const pm = new THREE.PMREMGenerator(renderer);
+    const roomAt = k => { const room = new THREE.RoomEnvironment(); room.traverse(o => { if (o.isLight) o.intensity *= k; if (o.material && o.material.isMeshBasicMaterial) o.material.color.multiplyScalar(k); }); return pm.fromScene(room, .04).texture; };
+    envDay = roomAt(.7); envNight = roomAt(.08);
+    scene.environment = envDay;
     pm.dispose();
-    hemi.intensity = .48;           // parte do preenchimento agora vem do ambiente (só nos polidos e metais)
   }
+  const HEMI_DAY = scene.environment ? .48 : .62;     // com o ambiente, parte do preenchimento vem dos reflexos
+  hemi.intensity = HEMI_DAY;
 
   /* Relevo em coordenadas do mundo: a mesma textura serve de altura (bump) e de variação de tom.
      A amostragem projeta pelo eixo dominante da normal, então paredes de qualquer tamanho ficam na escala certa. */
@@ -644,7 +682,7 @@ const GFX = (() => {
   function photoTEX(t, slug, k){ if (t) loadPhoto(slug, 'diff', img => swapBase(t, img, k)); }
 
   /* Pós-processamento */
-  let composer = null, grade = null;
+  let composer = null, grade = null, bloom = null;
   const GradeShader = {
     uniforms: {tDiffuse:{value:null}, uExposure:{value:EXPOSURE}, uContrast:{value:1.07}, uSat:{value:1.08}, uVignette:{value:.32}},
     vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
@@ -679,7 +717,7 @@ const GFX = (() => {
       Object.assign(sao.params, {saoBias:.5, saoIntensity:.012, saoScale:6, saoKernelRadius:22, saoMinResolution:0, saoBlur:true, saoBlurRadius:6, saoBlurStdDev:3, saoBlurDepthCutoff:.02});
       composer.addPass(sao);
     }
-    if (Q.bloom && THREE.UnrealBloomPass) composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(sz.x, sz.y), .2, .35, 2.2));
+    if (Q.bloom && THREE.UnrealBloomPass){ bloom = new THREE.UnrealBloomPass(new THREE.Vector2(sz.x, sz.y), .2, .35, 2.2); composer.addPass(bloom); }
     grade = new THREE.ShaderPass(GradeShader);
     composer.addPass(grade);
     // a cena vai para o alvo em HDR linear; ACES e sRGB são aplicados uma vez só, no fim
@@ -689,12 +727,71 @@ const GFX = (() => {
     addEventListener('resize', () => composer.setSize(innerWidth, innerHeight));
   }
 
+  /* ---------- Ciclo dia e noite ----------
+     A hora vem do relógio do jogo (08:00 → 22:00 por dia). O sol nasce às 6 h a leste (+x), passa pela frente
+     do hotel (+z, a avenida) e se põe às 19 h a oeste; depois a luz direcional vira a lua, fria e fraca.
+     Céu, neblina, preenchimento, reflexos, exposição e bloom acompanham, e os materiais que brilham (neon,
+     postes, janelas da cidade) acendem pelo fator noite. */
+  const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a)/(b - a))); return t*t*(3 - 2*t); };
+  const DEG = Math.PI/180, base = {fog:new THREE.Color(scene.fog.color), sun:new THREE.Color(sun.color)};
+  const C_DUSK = new THREE.Color(0xFFA25A), C_FOG_DUSK = new THREE.Color(0xD9A07A), C_FOG_NIGHT = new THREE.Color(0x0B1024);
+  const C_MOON = new THREE.Color(0x8FA2D8), C_HEMI = new THREE.Color(0xE4F2FF), C_HEMI_N = new THREE.Color(0x4A5A98);
+  const C_GND = new THREE.Color(0x8A7A5A), C_GND_N = new THREE.Color(0x15121A);
+  const glows = [];
+  let night = 0, hour = 8, expBase = EXPOSURE, lastHour = -1;
+  // a sombra precisa caber a torre do hotel (60 m) em qualquer altura do sol
+  Object.assign(sun.shadow.camera, {left:-58, right:58, top:58, bottom:-58, near:5, far:260});
+  sun.shadow.camera.updateProjectionMatrix();
+  function applyGlow(g){
+    const k = g.day + (g.night - g.day)*night;
+    if (g.prop === 'color') g.mat.color.copy(g.base).multiplyScalar(k); else g.mat[g.prop] = k;
+  }
+  function setHour(h){
+    hour = h;
+    if (Math.abs(h - lastHour) < .02) return;            // ~1 minuto do jogo: nada visível muda
+    lastHour = h;
+    const t = (h - 6)/13, elev = 62*DEG*Math.sin(Math.PI*t), az = (80 - 160*Math.min(1.2, Math.max(-.2, t)))*DEG;
+    const dir = new THREE.Vector3(Math.sin(az)*Math.cos(elev), Math.sin(elev), Math.cos(az)*Math.cos(elev)).normalize();
+    const e = elev/DEG, day = smooth(-4, 14, e), golden = smooth(-4, 3, e)*(1 - smooth(8, 24, e));
+    night = 1 - smooth(-6, 4, e);
+    if (night > .5){
+      sun.position.set(-30, 80, 50).add(sun.target.position);
+      sun.color.copy(C_MOON); sun.intensity = .22;
+    } else {
+      sun.position.copy(dir).multiplyScalar(110).add(sun.target.position);
+      sun.color.copy(base.sun).lerp(C_DUSK, golden*.85); sun.intensity = .25 + 1.3*day;
+    }
+    hemi.intensity = HEMI_DAY*(.3 + .7*day) + .1*night;
+    hemi.color.copy(C_HEMI).lerp(C_HEMI_N, night); hemi.groundColor.copy(C_GND).lerp(C_GND_N, night);
+    if (sky){ sky.material.uniforms.sunPosition.value.copy(dir); sky.visible = night < .97; }
+    if (oldSky) oldSky.material.color.setScalar(1 - .85*night);
+    nightSky.visible = night > .02; nightSky.material.uniforms.uNight.value = smooth(.1, .85, night);
+    scene.fog.color.copy(base.fog).lerp(C_FOG_DUSK, golden*.5).lerp(C_FOG_NIGHT, night);
+    if (envDay) scene.environment = night > .55 ? envNight : envDay;
+    const ex = expBase*(1 + .3*night);
+    renderer.toneMappingExposure = ex; if (grade) grade.uniforms.uExposure.value = ex;
+    if (bloom){ bloom.strength = .2 + .3*night; bloom.radius = .35 + .2*night; bloom.threshold = 2.2 - 1.3*night; }
+    for (const g of glows) applyGlow(g);
+  }
+
   return {
-    id, LEVELS, exposure:EXPOSURE, relief, photoMaps,
+    id, LEVELS, exposure:EXPOSURE, relief, photoMaps, setHour,
+    get night(){ return night; },
+    get hour(){ return hour; },
+    /* Material que acende à noite: prop 'color' (MeshBasic, multiplica a cor original) ou uma intensidade
+       (ex. 'emissiveIntensity'). day/night são os fatores nos dois extremos. */
+    glow(mat, prop, day, nightK){
+      const g = {mat, prop, day, night:nightK, base:mat.color ? mat.color.clone() : null};
+      glows.push(g); applyGlow(g);
+      if (mat.addEventListener) mat.addEventListener('dispose', () => { const i = glows.indexOf(g); if (i >= 0) glows.splice(i, 1); });
+      return mat;
+    },
+    /* Filial ativa: cor base da neblina e do sol; o ciclo continua mudando os tons em cima delas */
+    setBranch(fog, sunColor){ base.fog.setHex(fog); base.sun.setHex(sunColor); lastHour = -1; setHour(hour); },
     // luzes pontuais mais fracas: com o reflexo do ambiente somado, os interiores estouravam para o branco
     lightK:scene.environment ? .65 : 1,
     /* Ajusta a exposição (a melhoria de iluminação do lobby usa) sem depender de onde o ACES é aplicado */
-    setExposure(e){ renderer.toneMappingExposure = e; if (grade) grade.uniforms.uExposure.value = e; },
+    setExposure(e){ expBase = e; lastHour = -1; setHour(hour); },
     setLevel(lv){ if (!LEVELS[lv]) return; try { localStorage.setItem('grand_resort_gfx', lv); } catch(e){} location.reload(); },
     /* Chamado depois de montar o cenário: aplica relevo aos materiais compartilhados e pede as fotos */
     finish(extra = []){
@@ -723,7 +820,10 @@ const GFX = (() => {
       photoTEX(TEX.tileWhite, 'long_white_tiles', 1);
       photoTEX(TEX.marble, 'marble_01', 1);
     },
-    render(dt){ if (composer) composer.render(dt); else renderer.render(scene, camera); },
+    render(dt){
+      if (nightSky.visible){ nightSky.position.copy(camera.position); nightSky.material.uniforms.uTime.value += dt; }
+      if (composer) composer.render(dt); else renderer.render(scene, camera);
+    },
   };
 })();
 
@@ -3317,11 +3417,20 @@ function buildCity(){
   const deco = m => { m.castShadow = false; m.receiveShadow = false; scene.add(m); return m; };
   const road = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pbrMat('asphaltRoad', w, d, 12)); m.rotation.x = -Math.PI/2; m.position.set(x, .01, z); deco(m); };
   const walk = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), pbrMat('sidewalkStone', w, d, 4)); m.rotation.x = -Math.PI/2; m.position.set(x, .12, z); deco(m); };
-  const cityWindows = (base, lit) => tex(256, (g,s) => {
-    g.fillStyle = base; g.fillRect(0,0,s,s);
-    for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++){ g.fillStyle = Math.random() < lit ? '#FFE7A3' : '#2E3A47'; g.fillRect(c*64 + 14, r*32 + 10, 36, 18); }
-    g.fillStyle = 'rgba(0,0,0,.25)'; for (let r = 0; r < 8; r++) g.fillRect(0, r*32 + 30, s, 2);
-  });
+  // fachada com janelas e, no mesmo sorteio, o mapa de brilho só das janelas acesas (acende à noite)
+  const cityWindows = (base, lit) => {
+    const on = []; for (let i = 0; i < 32; i++) on.push(Math.random() < lit);
+    const map = tex(256, (g,s) => {
+      g.fillStyle = base; g.fillRect(0,0,s,s);
+      for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++){ g.fillStyle = on[r*4 + c] ? '#FFE7A3' : '#2E3A47'; g.fillRect(c*64 + 14, r*32 + 10, 36, 18); }
+      g.fillStyle = 'rgba(0,0,0,.25)'; for (let r = 0; r < 8; r++) g.fillRect(0, r*32 + 30, s, 2);
+    });
+    map.glowMap = tex(256, (g,s) => {
+      g.fillStyle = '#000'; g.fillRect(0,0,s,s); g.fillStyle = '#FFE7A3';
+      for (let r = 0; r < 8; r++) for (let c = 0; c < 4; c++) if (on[r*4 + c]) g.fillRect(c*64 + 14, r*32 + 10, 36, 18);
+    });
+    return map;
+  };
   const facades = [cityWindows('#8C7A6A', .35), cityWindows('#C9C2B5', .3), cityWindows('#4A5566', .45), cityWindows('#A65E40', .3)];
   const awningColors = [0xB8332C, 0x2F6FB0, 0x3FA35F, 0xF2A93B];
   const shopGlass = new THREE.MeshStandardMaterial({color:0x6FB7D6, roughness:.1, metalness:.4, transparent:true, opacity:.7});
@@ -3350,7 +3459,8 @@ function buildCity(){
   for (const z of rows) for (const x of cols){
     if (n >= 16) break;
     const w = 12 + rnd()*4, d = 14 + rnd()*2, h = 12 + Math.floor(rnd()*7)*5, tex0 = facades[Math.floor(rnd()*facades.length)];
-    const mat = new THREE.MeshStandardMaterial({map:rep(tex0, Math.max(1, Math.round(w/4)), Math.max(1, Math.round(h/6))), roughness:.85});
+    const rx = Math.max(1, Math.round(w/4)), ry = Math.max(1, Math.round(h/6));
+    const mat = GFX.glow(new THREE.MeshStandardMaterial({map:rep(tex0, rx, ry), emissive:0xFFFFFF, emissiveMap:rep(tex0.glowMap, rx, ry), roughness:.85}), 'emissiveIntensity', 0, 1.6);
     deco(B(w, h, d, mat, x, 0, z, scene, false));
     deco(B(w*.8, 1.4, d*.6, MAT.steelDark, x, h, z, scene, false));
     if (n % 3 === 0) deco(CY(1.2, 1.2, 3, MAT.trunk, x + w*.2, h + 1.4, z, scene, 12));
@@ -3363,7 +3473,7 @@ function buildCity(){
   }
 
   // postes de luz (lanternas emissivas, sem luz pontual) e semáforos com ciclo vermelho/verde/amarelo
-  const lampMat = new THREE.MeshBasicMaterial({color:0xFFE2A8});
+  const lampMat = GFX.glow(new THREE.MeshBasicMaterial({color:0xFFE2A8}), 'color', 1, 4);
   for (let x = -102.5; x <= 110; x += 15) for (const z of [17.2, 32.8]){
     deco(new THREE.Mesh(new THREE.CylinderGeometry(.06, .08, 4.6, 8), MAT.steelDark)).position.set(x, 2.3, z);
     deco(new THREE.Mesh(new THREE.SphereGeometry(.2, 8, 6), lampMat)).position.set(x, 4.8, z);
@@ -3400,6 +3510,9 @@ function buildCity(){
   // carros: 3 no sentido leste (z 21.5) e 3 no oeste (z 28.5), dando a volta nas bordas
   const CARS = [];
   const carColors = [0xF2B630, 0x1F3A5F, 0xB8332C, 0xEFEFEF, 0xF2B630, 0x1F3A5F];
+  // faróis e lanternas compartilhados por todos os carros, acesos de verdade à noite
+  const headMat = GFX.glow(new THREE.MeshBasicMaterial({color:0xFFF4D0}), 'color', 1, 6);
+  const tailMat = GFX.glow(new THREE.MeshBasicMaterial({color:0xE23B2E}), 'color', 1, 4);
   carColors.forEach((c, i) => {
     const g = new THREE.Group(); scene.add(g);
     B(1.9, .6, 4.2, new THREE.MeshStandardMaterial({color:c, roughness:.35, metalness:.4}), 0, .28, 0, g, false);
@@ -3409,10 +3522,8 @@ function buildCity(){
       const holder = new THREE.Group(); holder.position.set(wx, .32, wz); holder.rotation.z = Math.PI/2; g.add(holder);
       const w = new THREE.Mesh(new THREE.CylinderGeometry(.32, .32, .22, 10), M(0x1A1A1A, {roughness:.9})); holder.add(w); wheels.push(w);
     }
-    B(.3, .12, .05, new THREE.MeshBasicMaterial({color:0xFFF4D0}), -.5, .5, 2.12, g, false);
-    B(.3, .12, .05, new THREE.MeshBasicMaterial({color:0xFFF4D0}), .5, .5, 2.12, g, false);
-    B(.3, .12, .05, new THREE.MeshBasicMaterial({color:0xE23B2E}), -.6, .5, -2.12, g, false);
-    B(.3, .12, .05, new THREE.MeshBasicMaterial({color:0xE23B2E}), .6, .5, -2.12, g, false);
+    B(.3, .12, .05, headMat, -.5, .5, 2.12, g, false); B(.3, .12, .05, headMat, .5, .5, 2.12, g, false);
+    B(.3, .12, .05, tailMat, -.6, .5, -2.12, g, false); B(.3, .12, .05, tailMat, .6, .5, -2.12, g, false);
     const dir = i % 2 ? -1 : 1;
     g.rotation.y = dir > 0 ? Math.PI/2 : -Math.PI/2;
     CARS.push({g, wheels, dir, laneZ: dir > 0 ? 21.5 : 28.5, x: -110 + (i/carColors.length)*220, v: 8 + Math.random()*5});
@@ -3449,7 +3560,7 @@ class World3D {
     buildFacade(index);
     refreshUpper();
   }
-  applyBranch(b){ scene.fog.color.setHex(b.fog); sun.color.setHex(b.sun); }
+  applyBranch(b){ GFX.setBranch(b.fog, b.sun); }
 }
 const WORLD = new World3D();
 
@@ -3535,6 +3646,7 @@ function loop(){
     hud(dt);
     chopTick();
     renderMission();
+    GFX.setHour(8 + 14*Math.min(1, G.t/G.dayLen));      // mesmo relógio do HUD (clockStr)
     GFX.render(dt);
   } catch (e){ reportError('loop', e); }
   requestAnimationFrame(loop);

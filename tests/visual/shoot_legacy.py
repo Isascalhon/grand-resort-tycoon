@@ -41,10 +41,12 @@ def arg(name, default):
 
 
 def main():
-    flags = {arg('--q', None), arg('--size', None)}
+    flags = {arg('--q', None), arg('--size', None), arg('--hora', None), arg('--etapa', None)}
     pos = [a for a in sys.argv[1:] if not a.startswith('--') and a not in flags]
     url = pos[0] if pos else 'http://localhost:5173/index.html'
     q = arg('--q', None)
+    hora = arg('--hora', None)       # hora do relógio do jogo (8 a 22); padrão: o início do dia
+    etapa = arg('--etapa', None)     # etapa da reforma (0 Ruína … 3 Alto Padrão) para fotografar a fachada
     w, h = (int(v) for v in arg('--size', '1280x720').split('x'))
     OUT.mkdir(parents=True, exist_ok=True)
     report, errors = {}, []
@@ -64,6 +66,11 @@ def main():
         # texturas fotográficas e modelos chegam depois do load: dá tempo para baixarem e subirem para a GPU
         pg.wait_for_timeout(6000)
         pg.evaluate("() => { const s = document.getElementById('start'); if (s) s.style.display = 'none'; }")
+        if etapa is not None:
+            pg.evaluate(f"() => WORLD.applyStage({int(etapa)})")
+            pg.wait_for_timeout(1500)
+        if hora is not None:
+            pg.evaluate(f"() => {{ G.t = ({float(hora)} - 8) / 14 * G.dayLen; }}")
         for name, cam, look in SHOTS:
             r = pg.evaluate("""([c, l]) => {
                 camera.position.set(...c); camera.lookAt(...l); camera.updateMatrixWorld();
