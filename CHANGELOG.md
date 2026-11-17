@@ -2,6 +2,16 @@
 
 ## 2.0.0-dev — Grand Resort 2.0 (em construção)
 
+### M1 — Protótipo da fachada (16/11/2026, aguardando aprovação)
+- `prototype.html`: câmera orbital, painel com 3/6/10 andares, hora do dia e qualidade, e 6 vistas prontas.
+- Fachada em camadas: praça com fonte, torres lilás com janelas modulares instanciadas e telhado mansarda,
+  núcleo violeta e bronze com lobby envidraçado e portas automáticas, marquise elíptica com ~3.400 lâmpadas,
+  pavilhão de vidro facetado, letreiros 3D e curvas douradas.
+- Luz por hora: sol e sombras, céu, reflexos HDRI, janelas e letreiros que acendem à noite, poças de luz dos postes.
+- Vegetação procedural com vento e LOD (carvalhos, bordos, ciprestes, palmeiras, arbustos) e trânsito com seis tipos de carro.
+- Orçamento no preset Média com 10 andares: ~200 draw calls e ~1 M de triângulos (limite: 600 e 2 M).
+- `tests/visual/shoot.py` (fotos de revisão) e e2e do M1.
+
 ### M0 — Fundação (16/11/2026)
 - Projeto modular com Vite 8 + three.js 0.187, Bun e build estático compatível com GitHub Pages.
 - Núcleo: laço em passo fixo separado da renderização, estado único versionado (v3) com validação,

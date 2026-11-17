@@ -26,11 +26,14 @@ Build com Vite (`base: './'`, funciona em subpasta do GitHub Pages) e Bun como g
 | Pasta | Conteúdo |
 | --- | --- |
 | `src/core` | `Game` (laço), `GameState` (estado v3 + validação), `GameClock` (dia de 240 s), `EventBus`, `Random` (semente), `SaveManager`, `LegacyImport` |
-| `src/data` | Tabelas do legado (`legacy.js`), categorias e estados de quarto (`rooms.js`); depois plantas, receitas, cargos |
-| `src/rendering` | `Renderer` (sRGB, ACES, sombras), `Quality` (Baixa/Média/Alta), `AssetManager` (texturas, HDRI, fontes) |
+| `src/data` | Tabelas do legado (`legacy.js`), categorias e estados de quarto (`rooms.js`), planta de referência (`buildings.js`); depois receitas e cargos |
+| `src/rendering` | `Renderer` (sRGB, ACES, sombras), `Quality` (Baixa/Média/Alta), `AssetManager` (texturas, HDRI, fontes), `MaterialLibrary` (PBR e emissivos que acompanham a hora), `Environment` (céu, sol, HDRI por período), `PostFX` (bloom ao anoitecer, GTAO, SMAA) |
+| `src/architecture` | `Batch` (lotes por material com UV em metros e conjuntos instanciados), `Site` (praça, avenida, postes), `HotelExterior` (torres, núcleo, marquise, pavilhão, letreiros) |
+| `src/vegetation` | `TreeGenerator` (algoritmo adaptado do ez-tree, vento no shader), `Palms` (palmeiras e arbustos), `Vegetation` (posições e LOD por distância) |
+| `src/city` | `Cars` (carros procedurais por tipo, trânsito nas 4 faixas) |
 | `src/ui` | Utilitários de DOM (`dom.js`) e, depois, HUD, painéis e modais |
 | `src/styles` | Identidade visual (paleta violeta, lilás, dourado e rubi; Gloock e Outfit) |
-| Próximos | `architecture` (fachada), `vegetation`, `city`, `hotel`, `player`, `world` (colisão e navegação), `guests`, `services`, `kitchen`, `economy`, `progression` |
+| Próximos | `hotel`, `player`, `world` (colisão e navegação), `guests`, `services`, `kitchen`, `economy`, `progression` |
 
 ## Salvamento
 - IndexedDB (`grand-resort`, store `saves`): `auto`, `manual-1..3`, `backup` (a cada 5 min) e `corrompido-<data>`.
