@@ -1,17 +1,19 @@
-/* Presets de qualidade gráfica. "auto" escolhe pelo aparelho; o jogador pode trocar nas configurações. */
+/* Presets de qualidade gráfica. "auto" escolhe pelo aparelho; o jogador pode trocar nas configurações.
+   ao: false | 'half' (8 amostras) | 'full' (16). interiors: quartos com profundidade falsa atrás das janelas.
+   city: quarteirões vizinhos (0 nenhum, 1 perto, 2 perto e longe). people: pedestres na cena. */
 
 export const QUALITY = {
   low: {
-    id: 'low', label: 'Baixa', pixelRatio: 1, shadows: false, shadowSize: 1024, ao: false, bloom: true, smaa: false,
-    anisotropy: 2, dynamicLights: 4, treeDetail: .6, drawDistance: 140,
+    id: 'low', label: 'Baixa', pixelRatio: 1, shadows: false, shadowSize: 1024, ao: false, bloom: true, smaa: false, grade: true,
+    anisotropy: 2, dynamicLights: 4, treeDetail: .6, drawDistance: 140, interiors: false, city: 1, people: 20, props: .5,
   },
   medium: {
-    id: 'medium', label: 'Média', pixelRatio: 1.5, shadows: true, shadowSize: 2048, ao: false, bloom: true, smaa: true,
-    anisotropy: 4, dynamicLights: 8, treeDetail: 1, drawDistance: 220,
+    id: 'medium', label: 'Média', pixelRatio: 1.5, shadows: true, shadowSize: 2048, ao: 'half', bloom: true, smaa: true, grade: true,
+    anisotropy: 4, dynamicLights: 8, treeDetail: 1, drawDistance: 220, interiors: true, city: 2, people: 50, props: 1,
   },
   high: {
-    id: 'high', label: 'Alta', pixelRatio: 2, shadows: true, shadowSize: 4096, ao: true, bloom: true, smaa: true,
-    anisotropy: 8, dynamicLights: 12, treeDetail: 1.4, drawDistance: 320,
+    id: 'high', label: 'Alta', pixelRatio: 2, shadows: true, shadowSize: 4096, ao: 'full', bloom: true, smaa: true, grade: true,
+    anisotropy: 8, dynamicLights: 12, treeDetail: 1.4, drawDistance: 320, interiors: true, city: 2, people: 90, props: 1,
   },
 };
 

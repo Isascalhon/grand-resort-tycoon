@@ -3,6 +3,7 @@
    e devolve o fator noite (0 = dia pleno, 1 = noite) para os materiais que acendem. */
 import * as THREE from 'three';
 import { Sky } from 'three/addons/objects/Sky.js';
+import { NightSky } from './NightSky.js';
 
 /* À noite os reflexos usam o HDRI do dia bem atenuado: o de rua noturna é todo sódio e deixava o chão laranja */
 const HDRI = { day: 'hdri/wide_street_01.hdr', dusk: 'hdri/venice_sunset.hdr' };
@@ -22,7 +23,9 @@ export class Environment {
     this.sky.scale.setScalar(4000);
     const u = this.sky.material.uniforms;
     u.turbidity.value = 4.5; u.rayleigh.value = 1.6; u.mieCoefficient.value = .004; u.mieDirectionalG.value = .82;
-    scene.add(this.sky);
+    this.sky.renderOrder = -2;
+    this.nightSky = new NightSky();
+    scene.add(this.sky, this.nightSky.mesh);
 
     this.sun = new THREE.DirectionalLight(0xffffff, 3);
     this.sun.castShadow = quality.shadows;
@@ -36,9 +39,10 @@ export class Environment {
 
     this.hemi = new THREE.HemisphereLight(0xdfe6ff, 0x4a3f38, .5);
     scene.add(this.hemi);
-    scene.fog = new THREE.FogExp2(0xb9c3d6, .0034);
+    scene.fog = new THREE.FogExp2(0xb9c3d6, .0024);
     this.sunDir = new THREE.Vector3();
-    this.nightSky = new THREE.Color();
+    this.focusPoint = new THREE.Vector3(0, 0, 4);
+    this.focusRadius = 60;
   }
 
   async load() {
@@ -66,15 +70,16 @@ export class Environment {
     const day = smooth(-4, 14, elevDeg);                    // 0 noite … 1 sol alto
     const golden = smooth(-4, 3, elevDeg) * (1 - smooth(8, 24, elevDeg));
     this.night = 1 - smooth(-6, 6, elevDeg);
+    this.golden = golden;
 
     // à noite a luz direcional vira a lua: fria, fraca e alta
     const sunColor = new THREE.Color(0xfff3e2).lerp(new THREE.Color(0xffa25a), golden);
     if (this.night > .5) {
-      this.sun.position.set(-30, 80, 50);
+      this.sun.position.set(-30, 80, 50).add(this.sun.target.position);
       this.sun.color.set(0x8fa2d8);
       this.sun.intensity = .35;
     } else {
-      this.sun.position.copy(this.sunDir).multiplyScalar(120).add(this.sun.target.position);
+      this.sun.position.copy(this.sunDir).multiplyScalar(100 + this.focusRadius).add(this.sun.target.position);
       this.sun.color.copy(sunColor);
       this.sun.intensity = .4 + 3.4 * day;
     }
@@ -86,17 +91,34 @@ export class Environment {
     const rt = this.maps[period === 'night' ? 'day' : period];
     if (rt) this.scene.environment = rt.texture;
     this.scene.environmentIntensity = period === 'night' ? .08 : .3 + .18 * day;     // o HDRI ensolarado não projeta sombra: pouco, para não apagá-las
-    // o Sky (Preetham) fica preto com o sol baixo: à noite, um azul-noite profundo no lugar
+    // o Sky (Preetham) fica preto com o sol baixo: à noite a cúpula com estrelas e lua cobre o céu
     this.sky.visible = this.night < .97;
-    this.scene.background = this.nightSky.copy(NIGHT_SKY);
+    this.scene.background = NIGHT_SKY;
+    this.nightSky.set(smooth(.25, .9, this.night));
 
-    const fog = new THREE.Color(0xb9c3d6).lerp(new THREE.Color(0xd9a07a), golden * .6).lerp(new THREE.Color(0x0c1026), this.night);
+    // névoa da cor do horizonte; à noite fica mais rala para as luzes da cidade aparecerem ao longe
+    const fog = new THREE.Color(0xc4cfdf).lerp(new THREE.Color(0xd9a07a), golden * .6).lerp(new THREE.Color(0x0d1630), this.night);
     this.scene.fog.color.copy(fog);
+    this.scene.fog.density = .0024 - .0008 * this.night;
     this.renderer.toneMappingExposure = .85 + .35 * this.night;
     return this.night;
   }
 
+  /* Encaixa a câmera de sombra na área vista: vistas próximas ganham sombras mais nítidas (mesmo mapa, área menor) */
+  focus(point, radius) {
+    this.focusPoint.copy(point); this.focusRadius = THREE.MathUtils.clamp(radius, 18, 75);
+    const r = this.focusRadius, cam = this.sun.shadow.camera;
+    Object.assign(cam, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 140 + r * 2 });
+    cam.updateProjectionMatrix();
+    this.sun.shadow.normalBias = .015 + r * .0005;
+    this.sun.target.position.copy(point).setY(0);
+    this.setHour(this.hour);
+  }
+
+  update(dt, camera) { this.nightSky.update(dt, camera); }
+
   dispose() {
+    this.nightSky.dispose();
     for (const rt of Object.values(this.maps)) rt.dispose();
     this.pmrem.dispose();
     this.sky.geometry.dispose(); this.sky.material.dispose();

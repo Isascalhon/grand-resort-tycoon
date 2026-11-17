@@ -54,7 +54,7 @@ async function boot() {
   controls.maxPolarAngle = Math.PI / 2 - .02;
   controls.minDistance = 3; controls.maxDistance = 260;
 
-  const post = new PostFX(renderer, scene, camera, quality);
+  const post = new PostFX(renderer, scene, camera, quality, { stillFrames: testMode });
   bindResize(renderer, camera, (w, h) => post.setSize(w, h));
 
   scene.add(buildSite(mats));
@@ -77,7 +77,7 @@ async function boot() {
     state.hour = h;
     const night = env.setHour(h);
     mats.setNight(night);
-    post.setNight(night);
+    post.setNight(night, env.golden);
     syncPanel();
   }
 
@@ -87,7 +87,18 @@ async function boot() {
     camera.position.set(...v.pos);
     controls.target.set(...v.target);
     controls.update();
+    focusShadows();
     setTime(v.hour);
+  }
+
+  /* Sombra concentrada no que a câmera vê: o alvo da órbita e um raio que cresce com a distância */
+  const lastFocus = new THREE.Vector3(1e9, 0, 0);
+  let lastRadius = 0;
+  function focusShadows() {
+    const r = Math.ceil(camera.position.distanceTo(controls.target) * .55 / 4) * 4;
+    if (lastFocus.distanceTo(controls.target) < 6 && r === lastRadius) return;
+    lastFocus.copy(controls.target); lastRadius = r;
+    env.focus(controls.target, r);
   }
 
   /* ---------- painel ---------- */
@@ -136,6 +147,7 @@ async function boot() {
   function renderFrame(dt = 0) {
     hotel.update(dt, camera);
     vegetation.update(dt, camera, { force: true });
+    env.update(dt, camera);
     renderer.info.autoReset = false;
     renderer.info.reset();
     renderer.render(scene, camera);
@@ -170,6 +182,8 @@ async function boot() {
     hotel.update(dt, camera);
     vegetation.update(dt, camera);
     traffic.update(dt);
+    env.update(dt, camera);
+    focusShadows();
     post.render(dt);
     statsClock += dt;
     if (statsClock > .5) {
