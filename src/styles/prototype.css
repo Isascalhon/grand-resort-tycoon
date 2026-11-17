@@ -1,0 +1,31 @@
+/* Painel do protótipo da fachada: compacto, no canto, sem cobrir a vista principal */
+.proto-panel {
+  position: absolute; left: 16px; top: 16px; width: min(300px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px); overflow: auto; padding: 16px 16px 14px; border-radius: var(--radius);
+  background: color-mix(in srgb, var(--graphite-800) 84%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold-500) 40%, transparent);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .4); backdrop-filter: blur(8px);
+}
+.proto-title { margin: 0 0 10px; font: 400 28px/1 var(--font-display); }
+.proto-title em { font-style: normal; color: var(--gold-500); }
+.proto-row { display: grid; gap: 6px; margin: 10px 0; font-size: 13px; color: var(--lilac-200); }
+.proto-row b { color: var(--cream-100); font-weight: 600; margin-left: 6px; }
+.proto-row input[type="range"] { width: 100%; accent-color: var(--gold-500); }
+.proto-row select {
+  font: 500 14px var(--font-ui); padding: 7px 8px; border-radius: 8px; color: var(--cream-100);
+  background: var(--graphite-700); border: 1px solid var(--graphite-500);
+}
+.seg { display: flex; gap: 6px; }
+.seg button {
+  flex: 1; font: 600 14px var(--font-ui); padding: 7px 0; border-radius: 8px; cursor: pointer;
+  color: var(--cream-100); background: var(--graphite-700); border: 1px solid var(--graphite-500);
+}
+.seg button[aria-pressed="true"] { background: var(--gold-500); color: var(--graphite-900); border-color: var(--gold-500); }
+.proto-views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 12px; }
+.proto-views .btn { padding: 8px 4px; font-size: 13px; }
+.proto-views .btn[aria-pressed="true"] { border-color: var(--gold-500); color: var(--gold-300); }
+.proto-stats { margin: 12px 0 0; font-size: 11.5px; color: var(--lilac-300); line-height: 1.4; min-height: 1.4em; }
+.proto-back { display: inline-block; margin-top: 10px; padding: 7px 12px; font-size: 13px; }
+@media (max-width: 560px) {
+  .proto-panel { top: auto; bottom: 16px; max-height: 46dvh; }
+}
