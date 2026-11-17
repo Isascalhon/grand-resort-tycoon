@@ -16,6 +16,19 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Reflector.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<!-- Gráficos: céu físico, reflexos de ambiente e pós-processamento (opcionais: sem eles o jogo desenha direto) -->
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Sky.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/environments/RoomEnvironment.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/SAOShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/DepthLimitedBlurShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/UnpackDepthRGBAShader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/SAOPass.js"></script>
 <style>
 /* Layout: o mundo 3D ocupa a tela; HUD de nogueira e latão nos cantos, mira no centro, painel do computador como janela modal. */
 :root{
@@ -69,6 +82,10 @@ kbd{font:600 12px var(--font-body);padding:3px 8px;border-radius:6px;background:
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 .cta{background:var(--brass);color:var(--walnut);font-weight:700;font-size:16px;padding:13px 18px;border-radius:12px}
 .cta:hover{filter:brightness(1.08)}
+.gfxpick{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--linen-dim)}
+.gfxpick #gfxBtns{display:flex;gap:6px}
+.gfxpick button{padding:6px 12px;border-radius:8px;background:var(--walnut-2);border:1px solid color-mix(in srgb,var(--brass) 35%,transparent);color:var(--linen);font-size:13px}
+.gfxpick button[aria-pressed="true"]{background:var(--brass);color:var(--walnut);font-weight:700}
 button:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
 .note{font-size:12.5px !important}
 .modal .sheet{width:min(640px,100%);max-height:min(620px,calc(100vh - 40px));display:flex;flex-direction:column;overflow:hidden}
@@ -196,6 +213,7 @@ td.num{text-align:right} .pos{color:#7FD8C8} .neg{color:#F29A8E}
       <kbd>E / Clique</kbd><span>Interagir com o que está na mira</span>
       <kbd>Esc</kbd><span>Pausar e soltar o mouse</span>
     </div>
+    <div class="gfxpick" role="group" aria-label="Qualidade gráfica"><span>Gráficos</span><span id="gfxBtns"></span></div>
     <button class="cta" id="play">Clique para jogar</button>
     <p class="note" id="lockNote">Se o navegador não liberar o mouse, o jogo entra no modo arrastar: segure o botão e arraste para olhar.</p>
     <button class="note" id="resetSave" hidden style="text-decoration:underline;color:var(--coral);align-self:flex-start">Apagar progresso salvo e começar do zero</button>
@@ -395,9 +413,21 @@ pbrDefine('poolWater', {roughness:.08, metalness:0, bumpScale:0, transparent:tru
 /* Material PBR com repetição: w e d em metros, tile = metros por repetição da textura */
 function pbrMat(name, w, d, tile, o = {}){
   const p = PBR[name];
-  return M(0xFFFFFF, Object.assign({map:rep(p.map, w/tile, d/tile), bumpMap:rep(p.bump, w/tile, d/tile), bumpScale:p.bumpScale, roughness:p.roughness, metalness:p.metalness}, o));
+  const m = M(0xFFFFFF, Object.assign({map:rep(p.map, w/tile, d/tile), bumpMap:rep(p.bump, w/tile, d/tile), bumpScale:p.bumpScale, roughness:p.roughness, metalness:p.metalness}, o));
+  // com a foto já carregada, o material nasce com relevo e rugosidade dela; senão GFX completa quando chegar
+  (p.mats || (p.mats = new Set())).add(m); m.addEventListener('dispose', () => p.mats.delete(m));
+  if (p.photo) GFX.photoMaps(m, p.photo);
+  return m;
 }
-function rep(t, rx, ry){ const c = gpuTrack(t.clone()); c.needsUpdate = true; c.repeat.set(rx, ry); return c; }
+/* Cópias com repetição própria. Cada base guarda suas cópias vivas para receber a textura fotográfica quando ela
+   chegar (GFX troca a imagem e corrige a escala com base.photoK, metros da foto ÷ metros da procedural) */
+const REPS = new Map();
+function rep(t, rx, ry){
+  const k = t.photoK || 1, c = gpuTrack(t.clone()); c.needsUpdate = true; c.repeat.set(rx*k, ry*k);
+  if (!REPS.has(t)) REPS.set(t, new Set());
+  const set = REPS.get(t); set.add(c); c.addEventListener('dispose', () => set.delete(c));
+  return c;
+}
 function label(text, o = {}){
   const w = o.w || 512, h = o.h || 128;
   const t = tex(w, (g) => {
@@ -411,7 +441,10 @@ function label(text, o = {}){
 }
 
 /* ---------- Materiais compartilhados ---------- */
-const M = (color, o = {}) => gpuTrack(new THREE.MeshStandardMaterial(Object.assign({color, roughness:.7, metalness:0}, o)));
+/* Reflexo do ambiente: forte nos metais, médio no que é polido, quase nada no fosco (a luz branca do ambiente
+   somada às cores foscas desbotava tudo: tapete virava rosa, sebe virava verde-água) */
+const envFor = (metalness = 0, roughness = .7) => metalness > .5 ? 1 : roughness < .4 ? .5 : .12;
+const M = (color, o = {}) => gpuTrack(new THREE.MeshStandardMaterial(Object.assign({color, roughness:.7, metalness:0, envMapIntensity:envFor(o.metalness, o.roughness ?? .7)}, o)));
 const MAT = {
   wall: M(0xF1E9DC, {roughness:.9}), wallWarm: M(0xE9D6B8, {roughness:.9}), wallTile: M(0xFFFFFF, {map:rep(TEX.tileWhite,4,2), roughness:.4}),
   ceiling: M(0xF7F2EA, {roughness:.95}), woodDark: M(0x4A2B1B, {roughness:.45}), wood: M(0x9A6E45, {roughness:.6}),
@@ -464,7 +497,7 @@ function wallZ(x, z1, z2, h, mat, gaps = [], t = .2, door = 2.4){
   seg(cur, z2);
 }
 function ceiling(x1,z1,x2,z2,h){ const m = B(x2-x1, .2, z2-z1, MAT.ceiling, (x1+x2)/2, h, (z1+z2)/2); occluders.push(m); return m; }
-function lamp(x,y,z,color = 0xFFD9A0,intensity = 1.2,dist = 14){ const l = new THREE.PointLight(color, intensity, dist, 2); l.position.set(x,y,z); scene.add(l); return l; }
+function lamp(x,y,z,color = 0xFFD9A0,intensity = 1.2,dist = 14){ const l = new THREE.PointLight(color, intensity*GFX.lightK, dist, 2); l.position.set(x,y,z); scene.add(l); return l; }
 
 /* ---------- Interações: registro de objetos que reagem à mira ---------- */
 const iaRoots = [];
@@ -472,14 +505,226 @@ function interact(obj, def){ obj.userData.ia = def; obj.traverse(o => o.userData
 function unregister(obj){ const i = iaRoots.indexOf(obj); if (i >= 0) iaRoots.splice(i,1); }
 
 /* ---------- Iluminação global ---------- */
-scene.add(new THREE.HemisphereLight(0xE4F2FF, 0x8A7A5A, .62));
+const hemi = new THREE.HemisphereLight(0xE4F2FF, 0x8A7A5A, .62);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xFFF0D6, 1.55);
 sun.position.set(28, 46, 22); sun.target.position.set(0, 0, -10);
 sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
 Object.assign(sun.shadow.camera, {left:-48, right:48, top:42, bottom:-42, near:5, far:130});
 sun.shadow.bias = -.0004; sun.shadow.normalBias = .03;
 scene.add(sun, sun.target);
-scene.add(new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), new THREE.MeshBasicMaterial({map:TEX.sky, side:THREE.BackSide, fog:false})));
+
+/* ---------- Gráficos ----------
+   Qualidade (Baixa, Média, Alta) escolhida na tela inicial e guardada no navegador. Sobre o cenário:
+   - céu físico (Sky) alinhado ao sol, no lugar da esfera com degradê;
+   - reflexos de ambiente (RoomEnvironment em PMREM): ouro, aço, mármore e vidro passam a refletir algo;
+   - texturas fotográficas CC0 (Poly Haven, em res/tex) trocam as procedurais quando chegam. Só via http:
+     abrindo o arquivo direto (file://) o navegador bloqueia as imagens e o jogo fica com as procedurais;
+   - relevo e variação de tom em coordenadas do mundo em paredes, tetos, madeiras e tecidos (sem esticar);
+   - pós-processamento em HDR: MSAA, oclusão de ambiente (Alta), brilho nas luzes e correção de cor com ACES.
+   Sem os scripts opcionais (CDN fora do ar), cada etapa é pulada e o jogo desenha como antes. */
+const GFX = (() => {
+  const LEVELS = {
+    baixa: {label:'Baixa', pr:1, shadow:1024, msaa:0, bloom:false, ao:false},
+    media: {label:'Média', pr:1.5, shadow:2048, msaa:4, bloom:true, ao:false},
+    alta: {label:'Alta', pr:2, shadow:4096, msaa:4, bloom:true, ao:true},
+  };
+  let id = null;
+  try { id = localStorage.getItem('grand_resort_gfx'); } catch(e){ /* sem armazenamento: escolha automática */ }
+  if (!LEVELS[id]) id = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) || (navigator.hardwareConcurrency || 4) <= 4 ? 'baixa' : 'media';
+  const Q = LEVELS[id];
+  const EXPOSURE = .82;
+  renderer.setPixelRatio(Math.min(devicePixelRatio, Q.pr));
+  renderer.toneMappingExposure = EXPOSURE;
+  sun.shadow.mapSize.set(Q.shadow, Q.shadow);
+
+  /* Céu */
+  const sunDir = sun.position.clone().sub(sun.target.position).normalize();
+  if (THREE.Sky){
+    const sky = new THREE.Sky(); sky.scale.setScalar(900);
+    const u = sky.material.uniforms;
+    u.turbidity.value = 2.6; u.rayleigh.value = 1.1; u.mieCoefficient.value = .004; u.mieDirectionalG.value = .82;
+    u.sunPosition.value.copy(sunDir);
+    scene.add(sky);
+  } else {
+    scene.add(new THREE.Mesh(new THREE.SphereGeometry(180, 32, 16), new THREE.MeshBasicMaterial({map:TEX.sky, side:THREE.BackSide, fog:false})));
+  }
+
+  /* Reflexos: sala neutra de estúdio, atenuada para não clarear demais os interiores */
+  if (THREE.RoomEnvironment){
+    const pm = new THREE.PMREMGenerator(renderer), room = new THREE.RoomEnvironment();
+    room.traverse(o => { if (o.isLight) o.intensity *= .7; if (o.material && o.material.isMeshBasicMaterial) o.material.color.multiplyScalar(.7); });
+    scene.environment = pm.fromScene(room, .04).texture;
+    pm.dispose();
+    hemi.intensity = .48;           // parte do preenchimento agora vem do ambiente (só nos polidos e metais)
+  }
+
+  /* Relevo em coordenadas do mundo: a mesma textura serve de altura (bump) e de variação de tom.
+     A amostragem projeta pelo eixo dominante da normal, então paredes de qualquer tamanho ficam na escala certa. */
+  const WORLD_BUMP = `
+    #ifdef USE_BUMPMAP
+      uniform sampler2D bumpMap; uniform float bumpScale; uniform float uTile, uTone;
+      varying vec3 vWP; varying vec3 vWN;
+      vec2 wuv(){ vec3 n = abs(vWN); return (n.y > n.x && n.y > n.z ? vWP.xz : n.x > n.z ? vWP.zy : vWP.xy) * uTile; }
+      vec2 dHdxy_fwd(){
+        vec2 uv = wuv(), dx = dFdx(uv), dy = dFdy(uv);
+        float h = bumpScale * texture2D(bumpMap, uv).x;
+        return vec2(bumpScale * texture2D(bumpMap, uv + dx).x - h, bumpScale * texture2D(bumpMap, uv + dy).x - h);
+      }
+      vec3 perturbNormalArb(vec3 surf_pos, vec3 surf_norm, vec2 dHdxy, float faceDirection){
+        vec3 vSigmaX = vec3(dFdx(surf_pos.x), dFdx(surf_pos.y), dFdx(surf_pos.z));
+        vec3 vSigmaY = vec3(dFdy(surf_pos.x), dFdy(surf_pos.y), dFdy(surf_pos.z));
+        vec3 vN = surf_norm, R1 = cross(vSigmaY, vN), R2 = cross(vN, vSigmaX);
+        float fDet = dot(vSigmaX, R1) * faceDirection;
+        vec3 vGrad = sign(fDet) * (dHdxy.x * R1 + dHdxy.y * R2);
+        return normalize(abs(fDet) * surf_norm - vGrad);
+      }
+    #endif`;
+  // textura de reserva: ruído suave em canvas, trocado pela foto quando ela chegar
+  const noiseCanvas = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 256; const g = c.getContext('2d');
+    g.fillStyle = '#808080'; g.fillRect(0, 0, 256, 256);
+    for (let i = 0; i < 2200; i++){ const r = 2 + Math.random()*10, v = 100 + Math.random()*56 | 0; g.fillStyle = `rgba(${v},${v},${v},.18)`; g.beginPath(); g.arc(Math.random()*256, Math.random()*256, r, 0, 6.3); g.fill(); }
+    return c;
+  })();
+  const reliefTex = {};
+  function relief(mat, slug, {tile = .5, bump = .02, tone = .3} = {}){
+    if (!mat || mat.userData.relief) return;
+    let t = reliefTex[slug];
+    if (!t){ t = reliefTex[slug] = new THREE.CanvasTexture(noiseCanvas); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); loadPhoto(slug, 'diff', img => { t.image = img; t.needsUpdate = true; }); }
+    mat.userData.relief = true;
+    mat.bumpMap = t; mat.bumpScale = bump;
+    mat.onBeforeCompile = sh => {
+      sh.uniforms.uTile = {value:tile}; sh.uniforms.uTone = {value:tone};
+      sh.vertexShader = sh.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vWP; varying vec3 vWN;')
+        .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvWN = normalize(mat3(modelMatrix) * objectNormal);');
+      sh.fragmentShader = sh.fragmentShader
+        .replace('#include <bumpmap_pars_fragment>', WORLD_BUMP)
+        .replace('#include <map_fragment>', '#include <map_fragment>\ndiffuseColor.rgb *= 1.0 + uTone * (texture2D(bumpMap, wuv()).x - 0.5);');
+    };
+    mat.customProgramCacheKey = () => `relief:${tile}:${tone}`;
+    mat.needsUpdate = true;
+  }
+
+  /* Texturas fotográficas: res/tex/<pasta>/{diff,nor,arm}.jpg */
+  const photoOK = location.protocol === 'http:' || location.protocol === 'https:';
+  const loader = new THREE.ImageLoader(), photoCache = {};
+  function loadPhoto(slug, map, done){
+    if (!photoOK) return;
+    const key = `${slug}/${map}`;
+    if (!photoCache[key]) photoCache[key] = new Promise(res => loader.load(`res/tex/${key}.jpg`, res, undefined, () => res(null)));
+    photoCache[key].then(img => { if (img) done(img); });
+  }
+  /* Troca a imagem de uma base procedural e de todas as suas cópias, ajustando a repetição pelo fator k */
+  function swapBase(base, img, k){
+    const prev = base.photoK || 1;
+    base.image = img; base.photoK = k; base.needsUpdate = true;
+    for (const c of REPS.get(base) || []){ c.image = img; c.repeat.multiplyScalar(k / prev); c.needsUpdate = true; }
+  }
+  /* Normal e rugosidade da foto num material PBR, com a mesma repetição do mapa de cor */
+  function photoMaps(m, ph){
+    if (!m.map) return;
+    const r = m.map.repeat;
+    const mk = img => { const t = gpuTrack(new THREE.Texture(img)); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); t.repeat.copy(r); t.needsUpdate = true; return t; };
+    m.normalMap = mk(ph.nor); m.normalScale.set(ph.normal, ph.normal);
+    if (ph.arm){ m.roughnessMap = mk(ph.arm); m.roughness = Math.min(1, m.roughness * ph.rough); }
+    m.bumpMap = null; m.needsUpdate = true;
+  }
+  /* PBR procedural → foto: cor, normal e rugosidade. TEX procedural → foto: só a cor */
+  function photoPBR(name, slug, k, {normal = 1, rough = 2.2} = {}){
+    const p = PBR[name]; if (!p) return;
+    loadPhoto(slug, 'diff', diff => loadPhoto(slug, 'nor', nor => loadPhoto(slug, 'arm', arm => {
+      swapBase(p.map, diff, k);
+      p.photo = {nor, arm, normal, rough};
+      for (const m of p.mats || []) photoMaps(m, p.photo);
+    })));
+  }
+  function photoTEX(t, slug, k){ if (t) loadPhoto(slug, 'diff', img => swapBase(t, img, k)); }
+
+  /* Pós-processamento */
+  let composer = null, grade = null;
+  const GradeShader = {
+    uniforms: {tDiffuse:{value:null}, uExposure:{value:EXPOSURE}, uContrast:{value:1.07}, uSat:{value:1.08}, uVignette:{value:.32}},
+    vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: `
+      uniform sampler2D tDiffuse; uniform float uExposure, uContrast, uSat, uVignette; varying vec2 vUv;
+      vec3 RRTAndODTFit(vec3 v){ vec3 a = v * (v + 0.0245786) - 0.000090537; vec3 b = v * (0.983729 * v + 0.4329510) + 0.238081; return a / b; }
+      vec3 aces(vec3 c){
+        const mat3 I = mat3(vec3(0.59719, 0.07600, 0.02840), vec3(0.35458, 0.90834, 0.13383), vec3(0.04823, 0.01566, 0.83777));
+        const mat3 O = mat3(vec3(1.60475, -0.10208, -0.00327), vec3(-0.53108, 1.10813, -0.07276), vec3(-0.07367, -0.00605, 1.07602));
+        return clamp(O * RRTAndODTFit(I * (c * uExposure / 0.6)), 0.0, 1.0);
+      }
+      vec3 toSRGB(vec3 c){ return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(0.0031308, c)); }
+      void main(){
+        vec3 c = toSRGB(aces(texture2D(tDiffuse, vUv).rgb));
+        c = clamp((c - 0.5) * uContrast + 0.5, 0.0, 1.0);
+        c = mix(vec3(dot(c, vec3(0.2126, 0.7152, 0.0722))), c, uSat);
+        c *= mix(vec3(0.985, 1.0, 1.03), vec3(1.02, 1.0, 0.97), smoothstep(0.2, 0.8, dot(c, vec3(0.333))));
+        vec2 q = vUv - 0.5;
+        c *= 1.0 - uVignette * smoothstep(0.2, 0.8, dot(q, q) * 2.0);
+        gl_FragColor = vec4(c, 1.0);
+      }`,
+  };
+  if (THREE.EffectComposer && THREE.RenderPass && THREE.ShaderPass){
+    const sz = renderer.getDrawingBufferSize(new THREE.Vector2());
+    const opts = {type:THREE.HalfFloatType, format:THREE.RGBAFormat};
+    const rt = renderer.capabilities.isWebGL2 && Q.msaa && THREE.WebGLMultisampleRenderTarget
+      ? Object.assign(new THREE.WebGLMultisampleRenderTarget(sz.x, sz.y, opts), {samples:Q.msaa}) : new THREE.WebGLRenderTarget(sz.x, sz.y, opts);
+    composer = new THREE.EffectComposer(renderer, rt);
+    composer.addPass(new THREE.RenderPass(scene, camera));
+    if (Q.ao && THREE.SAOPass){
+      const sao = new THREE.SAOPass(scene, camera, false, true);
+      Object.assign(sao.params, {saoBias:.5, saoIntensity:.012, saoScale:6, saoKernelRadius:22, saoMinResolution:0, saoBlur:true, saoBlurRadius:6, saoBlurStdDev:3, saoBlurDepthCutoff:.02});
+      composer.addPass(sao);
+    }
+    if (Q.bloom && THREE.UnrealBloomPass) composer.addPass(new THREE.UnrealBloomPass(new THREE.Vector2(sz.x, sz.y), .2, .35, 2.2));
+    grade = new THREE.ShaderPass(GradeShader);
+    composer.addPass(grade);
+    // a cena vai para o alvo em HDR linear; ACES e sRGB são aplicados uma vez só, no fim
+    renderer.toneMapping = THREE.NoToneMapping;
+    composer.setPixelRatio(renderer.getPixelRatio());
+    composer.setSize(innerWidth, innerHeight);
+    addEventListener('resize', () => composer.setSize(innerWidth, innerHeight));
+  }
+
+  return {
+    id, LEVELS, exposure:EXPOSURE, relief, photoMaps,
+    // luzes pontuais mais fracas: com o reflexo do ambiente somado, os interiores estouravam para o branco
+    lightK:scene.environment ? .65 : 1,
+    /* Ajusta a exposição (a melhoria de iluminação do lobby usa) sem depender de onde o ACES é aplicado */
+    setExposure(e){ renderer.toneMappingExposure = e; if (grade) grade.uniforms.uExposure.value = e; },
+    setLevel(lv){ if (!LEVELS[lv]) return; try { localStorage.setItem('grand_resort_gfx', lv); } catch(e){} location.reload(); },
+    /* Chamado depois de montar o cenário: aplica relevo aos materiais compartilhados e pede as fotos */
+    finish(extra = []){
+      for (const [m, slug, o] of [
+        [MAT.wall, 'beige_wall_001', {tile:.45, bump:.018, tone:.28}], [MAT.wallWarm, 'beige_wall_001', {tile:.45, bump:.018, tone:.28}],
+        [MAT.ceiling, 'white_stucco', {tile:.5, bump:.012, tone:.18}], [MAT.stone, 'white_stucco', {tile:.5, bump:.02, tone:.25}],
+        [MAT.wood, 'oak_wood_planks', {tile:.8, bump:.01, tone:.55}], [MAT.woodDark, 'dark_wood', {tile:.8, bump:.01, tone:.5}],
+        [MAT.leather, 'brown_leather', {tile:1.6, bump:.015, tone:.45}], [MAT.velvet, 'velour_velvet', {tile:2, bump:.012, tone:.5}],
+        [MAT.linen, 'rough_linen', {tile:2, bump:.01, tone:.25}], [MAT.white, 'rough_linen', {tile:2, bump:.006, tone:.12}],
+        [MAT.trunk, 'bark_brown_02', {tile:1, bump:.04, tone:.6}], [MAT.hedge, 'leafy_grass', {tile:.9, bump:.06, tone:.9}], ...extra,
+      ]) relief(m, slug, o);
+      // materiais criados direto (sem M) nascem com reflexo 1: mesma regra de M para os foscos
+      scene.traverse(o => { const ms = o.material ? [].concat(o.material) : []; for (const m of ms) if (m.isMeshStandardMaterial && m.envMapIntensity === 1) m.envMapIntensity = envFor(m.metalness, m.roughness); });
+      MAT.hedge.color.setHex(0x2C6634);       // folhagem mais escura: com o reflexo do ambiente o verde original clareava demais
+      photoPBR('asphaltRoad', 'asphalt_02', 3.5, {rough:1.15});
+      photoPBR('sidewalkStone', 'concrete_pavers', 1.6, {rough:1.2});
+      photoPBR('marbleCarrara', 'marble_01', 1.3, {rough:1.6, normal:.6});
+      photoPBR('oakWood', 'oak_wood_planks', 1);
+      photoPBR('teakDeck', 'wooden_floor_02', 1, {rough:1.3});
+      photoPBR('wovenFabric', 'rough_linen', 2, {rough:1.05});
+      photoTEX(TEX.grass, 'leafy_grass', 1.4);
+      photoTEX(TEX.woodLight, 'oak_wood_planks', 1);
+      photoTEX(TEX.deck, 'wooden_floor_02', 1);
+      photoTEX(TEX.carpet, 'poly_wool_herringbone', 1.6);
+      photoTEX(TEX.woodPanel, 'walnut_veneer', 1);
+      photoTEX(TEX.tileWhite, 'long_white_tiles', 1);
+      photoTEX(TEX.marble, 'marble_01', 1);
+    },
+    render(dt){ if (composer) composer.render(dt); else renderer.render(scene, camera); },
+  };
+})();
 
 /* ============================================================
    DADOS · valores da especificação (preços, diárias, estrelas por nível)
@@ -619,7 +864,8 @@ if (THREE.Reflector){
 } else {
   lobbyFloor = floor(-8,-6,8,6, pbrMat('marbleCarrara',16,12,2.5), .012);
 }
-floor(-1.1,-2.85,1.1,6, M(0xA3172B,{roughness:1}), .022);
+const LOBBY_RUNNER = M(0x7E1022,{roughness:.95});   // passadeira: veludo (relevo aplicado por GFX.finish)
+floor(-1.1,-2.85,1.1,6, LOBBY_RUNNER, .022);
 floor(-1.25,-2.95,1.25,6, M(0xD8A64A,{metalness:.6, roughness:.4}), .018);
 wallX(6, -8, 8, 5.2, MAT.wall, [[-1.5,1.5]], .2, 3.2);
 wallX(-6, -8, 8, 5, MAT.wall, [[4.5,7]]);
@@ -766,7 +1012,7 @@ ROOMS.forEach(room => {
   room.group = new THREE.Group(); room.group.position.set(room.cx, 0, room.side*2); room.group.rotation.y = room.side < 0 ? 0 : Math.PI; scene.add(room.group);
   const z1 = room.side < 0 ? -10 : 2, z2 = room.side < 0 ? -2 : 10;
   room.floor = floor(room.cx - 4.5, z1, room.cx + 4.5, z2, MAT.wall, .012);
-  room.light = new THREE.PointLight(0xFFDDB0, 1, 12, 2); room.light.position.set(room.cx, 2.9, room.side*6); scene.add(room.light);
+  room.light = new THREE.PointLight(0xFFDDB0, GFX.lightK, 12, 2); room.light.position.set(room.cx, 2.9, room.side*6); scene.add(room.light);
   // porta com dobradiça
   const hinge = new THREE.Group(); hinge.position.set(room.cx - .6, 0, room.side*2); scene.add(hinge);
   B(1.18, 2.36, .06, doorMat, .59, 0, 0, hinge);
@@ -1136,7 +1382,8 @@ function flatShape(shape, mat, y, segs = 16){ const m = new THREE.Mesh(new THREE
 // gramado com recorte do deque
 { const s = new THREE.Shape(); s.moveTo(-30,-14); s.lineTo(32,-14); s.lineTo(32,34); s.lineTo(-30,34); s.lineTo(-30,-14);
   const h = new THREE.Path(); h.moveTo(-1,10); h.lineTo(-1,27); h.lineTo(21,27); h.lineTo(21,10); h.lineTo(-1,10); s.holes.push(h);
-  flatShape(s, M(0xFFFFFF,{map:rep(TEX.grass,.33,.33), roughness:1}), 0); }
+  // tom verde por cima da textura: a foto de grama vista rasante e ao sol forte desbotava para verde-água
+  flatShape(s, M(0xA9CC8E,{map:rep(TEX.grass,.33,.33), roughness:1}), 0); }
 // deque de madeira com recorte da borda
 { const s = new THREE.Shape(); s.moveTo(-1,10); s.lineTo(21,10); s.lineTo(21,27); s.lineTo(-1,27); s.lineTo(-1,10);
   s.holes.push(poolShape(.4, THREE.Path)); flatShape(s, M(0xFFFFFF,{map:rep(TEX.deck,.4,.4), roughness:.8}), .005); }
@@ -1852,7 +2099,7 @@ function applyUpgrade(k){
   }
   if (k === 'light'){
     scene.traverse(o => { if (o.isPointLight) o.intensity *= 1.35; });
-    renderer.toneMappingExposure = 1.15;
+    GFX.setExposure(GFX.exposure * 1.1);
     const led = new THREE.MeshBasicMaterial({color:0xFFE9B8});
     for (const [w,d,x,z] of [[15.6,.06,0,-5.85],[15.6,.06,0,5.85],[.06,11.6,-7.85,0],[.06,11.6,7.85,0]]) B(w,.05,d, led, x, 4.8, z, scene, false);
     for (const [w,d,x,z] of [[11.6,.06,14,-7.85],[11.6,.06,14,7.85]]) B(w,.05,d, led, x, 3.8, z, scene, false);
@@ -2960,6 +3207,17 @@ function buildCity(){
 
   // ruas, calçadas e meios-fios
   road(240, 14, 0, 25); walk(240, 4, 0, 16); walk(240, 4, 0, 34);
+  // sinalização da avenida em faixas próprias (o asfalto fotográfico não traz pintura): linha dupla amarela no
+  // eixo, bordas brancas e tracejado entre as faixas de cada sentido
+  const paint = (c) => new THREE.MeshStandardMaterial({color:c, roughness:.6, polygonOffset:true, polygonOffsetFactor:-2});
+  const yellow = paint(0xE8B530), white = paint(0xEDEDE6);
+  const stripe = (w, d, x, z, m) => { const s = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); s.rotation.x = -Math.PI/2; s.position.set(x, .015, z); deco(s); };
+  stripe(240, .1, 0, 24.86, yellow); stripe(240, .1, 0, 25.14, yellow);
+  stripe(240, .12, 0, 18.5, white); stripe(240, .12, 0, 31.5, white);
+  const dashes = new THREE.InstancedMesh(new THREE.PlaneGeometry(4, .12).rotateX(-Math.PI/2), white, 54), dm = new THREE.Matrix4();
+  let di = 0;
+  for (let x = -118; x < 118 && di < 54; x += 9) for (const z of [23.2, 26.8]) dashes.setMatrixAt(di++, dm.makeTranslation(x + 2, .015, z));
+  dashes.count = di; deco(dashes);
   B(240, .12, .2, MAT.stone, 0, 0, 18.1, scene, false); B(240, .12, .2, MAT.stone, 0, 0, 31.9, scene, false);
   road(12, 84, -36, 78); road(12, 84, 50, 78);
   walk(2, 84, -43, 78); walk(2, 84, -29, 78); walk(2, 84, 43, 78); walk(2, 84, 57, 78);
@@ -3136,7 +3394,7 @@ function loop(){
     hud(dt);
     chopTick();
     renderMission();
-    renderer.render(scene, camera);
+    GFX.render(dt);
   } catch (e){ reportError('loop', e); }
   requestAnimationFrame(loop);
 }
@@ -3154,6 +3412,14 @@ $('resetSave').onclick = () => { if (confirm('Apagar o progresso salvo e começa
 setInterval(() => { if (!saveBlocked) GAME.save.save(); }, 10000);
 addEventListener('beforeunload', () => { if (!saveBlocked) GAME.save.save(); });
 camera.lookAt(0, 1.65, 0);
+// seletor de qualidade na tela inicial: troca e recarrega (o progresso é salvo antes, no beforeunload)
+for (const [lv, def] of Object.entries(GFX.LEVELS)){
+  const b = document.createElement('button'); b.type = 'button'; b.textContent = def.label; b.setAttribute('aria-pressed', String(lv === GFX.id));
+  b.onclick = e => { e.stopPropagation(); if (lv !== GFX.id) GFX.setLevel(lv); };
+  $('gfxBtns').append(b);
+}
+GFX.finish([[upMat.wall, 'beige_wall_001', {tile:.45, bump:.018, tone:.28}], [upMat.white, 'white_stucco', {tile:.5, bump:.012, tone:.18}],
+            [LOBBY_RUNNER, 'velour_velvet', {tile:1.5, bump:.01, tone:.45}]]);
 loop();
 </script>
 </body>

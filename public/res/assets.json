@@ -385,6 +385,406 @@
           "size": 323604
         }
       ]
+    },
+    {
+      "slug": "beige_wall_001",
+      "name": "Beige Wall 001",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Dimitrios Savva",
+        "Rico Cilliers"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/beige_wall_001/diff.jpg",
+          "md5": "a99610d7d72ec6fb20ae991ad69b3eb7",
+          "size": 33074
+        },
+        {
+          "map": "nor",
+          "path": "tex/beige_wall_001/nor.jpg",
+          "md5": "2f5fc5b63c425b359089468f4d719ef5",
+          "size": 153434
+        },
+        {
+          "map": "arm",
+          "path": "tex/beige_wall_001/arm.jpg",
+          "md5": "665a2f0a2669e423ecdab3719a396739",
+          "size": 87358
+        }
+      ]
+    },
+    {
+      "slug": "brown_leather",
+      "name": "Brown Leather",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Rob Tuytel"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/brown_leather/diff.jpg",
+          "md5": "080b3bf1372766ff2c7ff121ed07b5e8",
+          "size": 503348
+        },
+        {
+          "map": "nor",
+          "path": "tex/brown_leather/nor.jpg",
+          "md5": "b63ae0121a415c23d74eed0b07fc6065",
+          "size": 863280
+        },
+        {
+          "map": "arm",
+          "path": "tex/brown_leather/arm.jpg",
+          "md5": "40778465932d0a0816a9fbdab00e2a5d",
+          "size": 436931
+        }
+      ]
+    },
+    {
+      "slug": "dark_wood",
+      "name": "Dark Wood",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Dario Barresi",
+        "Dimitrios Savva",
+        "Rico Cilliers"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/dark_wood/diff.jpg",
+          "md5": "47fa883f1bb33acc5711245f64b75975",
+          "size": 754754
+        },
+        {
+          "map": "nor",
+          "path": "tex/dark_wood/nor.jpg",
+          "md5": "ca74ffa4c1b7ff5afe7316bbfa87f9a0",
+          "size": 344338
+        },
+        {
+          "map": "arm",
+          "path": "tex/dark_wood/arm.jpg",
+          "md5": "5fcd59b788282269a279fef1d8fb3300",
+          "size": 618801
+        }
+      ]
+    },
+    {
+      "slug": "herringbone_parquet",
+      "name": "Herringbone Parquet",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Jenelle van Heerden",
+        "Sergej Majboroda"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/herringbone_parquet/diff.jpg",
+          "md5": "dae9d3dd6d8a2c2e387da22fd8228265",
+          "size": 829046
+        },
+        {
+          "map": "nor",
+          "path": "tex/herringbone_parquet/nor.jpg",
+          "md5": "c0a64eb61ea44add715c6fe29b958adf",
+          "size": 373438
+        },
+        {
+          "map": "arm",
+          "path": "tex/herringbone_parquet/arm.jpg",
+          "md5": "0c5a18f599282509ae37e2f0bcc4e492",
+          "size": 554910
+        }
+      ]
+    },
+    {
+      "slug": "interior_tiles",
+      "name": "Interior Tiles",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Charlotte Baglioni"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/interior_tiles/diff.jpg",
+          "md5": "94ba3714450bb6bbe6a57c9a26e8dac5",
+          "size": 694562
+        },
+        {
+          "map": "nor",
+          "path": "tex/interior_tiles/nor.jpg",
+          "md5": "5c3a384bef2bbe4222803e7b40641609",
+          "size": 414639
+        },
+        {
+          "map": "arm",
+          "path": "tex/interior_tiles/arm.jpg",
+          "md5": "d26b56a5d079e341bc443172f1bdda19",
+          "size": 564996
+        }
+      ]
+    },
+    {
+      "slug": "long_white_tiles",
+      "name": "Long White Tiles",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Jenelle van Heerden",
+        "Sergej Majboroda"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/long_white_tiles/diff.jpg",
+          "md5": "49f7e4c3a0afd9a8ca3df5ac75747353",
+          "size": 619644
+        },
+        {
+          "map": "nor",
+          "path": "tex/long_white_tiles/nor.jpg",
+          "md5": "7837ef3d13258d6ee2bf9ee928d48152",
+          "size": 651009
+        },
+        {
+          "map": "arm",
+          "path": "tex/long_white_tiles/arm.jpg",
+          "md5": "cda98233f872f7c6047482daf200ee64",
+          "size": 572011
+        }
+      ]
+    },
+    {
+      "slug": "oak_wood_planks",
+      "name": "Oak Wood Planks",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Dimitrios Savva"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/oak_wood_planks/diff.jpg",
+          "md5": "e9e25ac7abcc482f73214fda23e2de25",
+          "size": 696814
+        },
+        {
+          "map": "nor",
+          "path": "tex/oak_wood_planks/nor.jpg",
+          "md5": "6a71c23551887b77b29623bb871aefbf",
+          "size": 392213
+        },
+        {
+          "map": "arm",
+          "path": "tex/oak_wood_planks/arm.jpg",
+          "md5": "acda23b587f7485d8c9c1d2c035e421f",
+          "size": 959397
+        }
+      ]
+    },
+    {
+      "slug": "poly_wool_herringbone",
+      "name": "Poly Wool Herringbone",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "colormass",
+        "Rico Cilliers"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/poly_wool_herringbone/diff.jpg",
+          "md5": "5c0981092ba0129d5951720ea23d50c2",
+          "size": 942966
+        },
+        {
+          "map": "nor",
+          "path": "tex/poly_wool_herringbone/nor.jpg",
+          "md5": "a6371d03b033a1c20e1c2758136ac757",
+          "size": 1045151
+        },
+        {
+          "map": "arm",
+          "path": "tex/poly_wool_herringbone/arm.jpg",
+          "md5": "30cb990f0569e90c5e7e7ef81f0e3b6f",
+          "size": 1223522
+        }
+      ]
+    },
+    {
+      "slug": "rough_linen",
+      "name": "Rough Linen",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "colormass",
+        "Rico Cilliers"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/rough_linen/diff.jpg",
+          "md5": "663db789fb075462b685c1f740e58930",
+          "size": 835801
+        },
+        {
+          "map": "nor",
+          "path": "tex/rough_linen/nor.jpg",
+          "md5": "3350269a2e9c472aa406bd3cc1eaf2c8",
+          "size": 916843
+        },
+        {
+          "map": "arm",
+          "path": "tex/rough_linen/arm.jpg",
+          "md5": "ffe777973056d79d6b2a1324e8451295",
+          "size": 1191393
+        }
+      ]
+    },
+    {
+      "slug": "velour_velvet",
+      "name": "Velour Velvet",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "colormass",
+        "Rico Cilliers"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/velour_velvet/diff.jpg",
+          "md5": "fa3a7ef3606bf7591b8f8577992e7228",
+          "size": 735556
+        },
+        {
+          "map": "nor",
+          "path": "tex/velour_velvet/nor.jpg",
+          "md5": "41009a399cb4d45e44636a515cd4c8c8",
+          "size": 695985
+        },
+        {
+          "map": "arm",
+          "path": "tex/velour_velvet/arm.jpg",
+          "md5": "e166716e35d4a35cf9582dba66629e8c",
+          "size": 1128961
+        }
+      ]
+    },
+    {
+      "slug": "walnut_veneer",
+      "name": "Walnut Veneer",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Jenelle van Heerden"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/walnut_veneer/diff.jpg",
+          "md5": "70e160b3d44d414728a2fb4194fde2a6",
+          "size": 496596
+        },
+        {
+          "map": "nor",
+          "path": "tex/walnut_veneer/nor.jpg",
+          "md5": "fc0df784c71c1cff9d80d4a6de0b2ab4",
+          "size": 442897
+        },
+        {
+          "map": "arm",
+          "path": "tex/walnut_veneer/arm.jpg",
+          "md5": "7db3474a1d0d1ed15e0cc349541ac1e3",
+          "size": 641173
+        }
+      ]
+    },
+    {
+      "slug": "wooden_floor_02",
+      "name": "Wooden Floor 02",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "Charlotte Baglioni",
+        "Rico Cilliers"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/wooden_floor_02/diff.jpg",
+          "md5": "7395f558aa2e2e898bb26fdc8bd5468b",
+          "size": 729028
+        },
+        {
+          "map": "nor",
+          "path": "tex/wooden_floor_02/nor.jpg",
+          "md5": "ce5dd5957548694d8aecc92ee16f34bf",
+          "size": 434460
+        },
+        {
+          "map": "arm",
+          "path": "tex/wooden_floor_02/arm.jpg",
+          "md5": "10e0183ee8a1c155307661da9b80e419",
+          "size": 575240
+        }
+      ]
+    },
+    {
+      "slug": "wool_boucle",
+      "name": "Wool Boucle",
+      "type": "texture",
+      "group": "interior",
+      "authors": [
+        "colormass",
+        "Rico Cilliers"
+      ],
+      "resolution": "1k",
+      "files": [
+        {
+          "map": "diff",
+          "path": "tex/wool_boucle/diff.jpg",
+          "md5": "e3d4b30b5f36d4763f9bd2f2e8d92f8e",
+          "size": 1284379
+        },
+        {
+          "map": "nor",
+          "path": "tex/wool_boucle/nor.jpg",
+          "md5": "6a413f9a1aa70ab3bb4fede917cf8a64",
+          "size": 1266355
+        },
+        {
+          "map": "arm",
+          "path": "tex/wool_boucle/arm.jpg",
+          "md5": "a792e0418ae3f189cb205f4f82d4cde9",
+          "size": 1561832
+        }
+      ]
     }
   ]
 }

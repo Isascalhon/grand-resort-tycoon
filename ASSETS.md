@@ -33,6 +33,19 @@ Domínio público ([CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/)
 | Pine Bark (`pine_bark`) | textura | Dimitrios Savva | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/pine_bark |
 | Terrazzo Tiles (`terrazzo_tiles`) | textura | Amal Kumar | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/terrazzo_tiles |
 | White Stucco (`white_stucco`) | textura | Amal Kumar | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/white_stucco |
+| Beige Wall 001 (`beige_wall_001`) | textura | Dimitrios Savva, Rico Cilliers | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/beige_wall_001 |
+| Brown Leather (`brown_leather`) | textura | Rob Tuytel | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/brown_leather |
+| Dark Wood (`dark_wood`) | textura | Dario Barresi, Dimitrios Savva, Rico Cilliers | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/dark_wood |
+| Herringbone Parquet (`herringbone_parquet`) | textura | Jenelle van Heerden, Sergej Majboroda | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/herringbone_parquet |
+| Interior Tiles (`interior_tiles`) | textura | Charlotte Baglioni | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/interior_tiles |
+| Long White Tiles (`long_white_tiles`) | textura | Jenelle van Heerden, Sergej Majboroda | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/long_white_tiles |
+| Oak Wood Planks (`oak_wood_planks`) | textura | Dimitrios Savva | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/oak_wood_planks |
+| Poly Wool Herringbone (`poly_wool_herringbone`) | textura | colormass, Rico Cilliers | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/poly_wool_herringbone |
+| Rough Linen (`rough_linen`) | textura | colormass, Rico Cilliers | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/rough_linen |
+| Velour Velvet (`velour_velvet`) | textura | colormass, Rico Cilliers | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/velour_velvet |
+| Walnut Veneer (`walnut_veneer`) | textura | Jenelle van Heerden | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/walnut_veneer |
+| Wooden Floor 02 (`wooden_floor_02`) | textura | Charlotte Baglioni, Rico Cilliers | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/wooden_floor_02 |
+| Wool Boucle (`wool_boucle`) | textura | colormass, Rico Cilliers | diff 1k, nor 1k, arm 1k | https://polyhaven.com/a/wool_boucle |
 
 ## Fontes (SIL Open Font License 1.1)
 
