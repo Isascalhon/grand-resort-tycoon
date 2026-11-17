@@ -32,6 +32,10 @@ SHOTS = [
     ('equipe-chef', (21.5, 1.7, -1.5), (26.1, 1.2, -1.5)),
     ('equipe-camareira', (-11.5, 1.7, 0.6), (-9.6, 1.1, -0.8)),
     ('gramado-fundos', (-4, 2.2, -12), (-22, 3, -28)),
+    # fachada do hotel (porta do protótipo): inteira vista da calçada oposta, sob a marquise e pelos fundos
+    ('fachada-longe', (0, 3, 44), (0, 16, 0)),
+    ('entrada-marquise', (2.5, 1.7, 12.6), (0, 3.5, 6)),
+    ('piscina-fundos', (8, 2, -24), (2, 7, -6)),
 ]
 
 
