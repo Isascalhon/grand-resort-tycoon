@@ -16,6 +16,7 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Reflector.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/utils/SkeletonUtils.js"></script>
 <!-- Gráficos: céu físico, reflexos de ambiente e pós-processamento (opcionais: sem eles o jogo desenha direto) -->
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Sky.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/environments/RoomEnvironment.js"></script>
@@ -299,7 +300,7 @@ function gpuTrack(r){ if (GPU.batch) GPU.batch.push(r); return r; }
 function gpuCollect(fn){ const prev = GPU.batch, list = []; GPU.batch = list; try { fn(); } finally { GPU.batch = prev; } return list; }
 function gpuFree(list){ if (!list) return; for (const r of list) r.dispose(); list.length = 0; }
 /* Remove o objeto da cena liberando geometrias próprias (sprites têm geometria compartilhada) e o lote de recursos */
-function gpuFreeObj(obj){ obj.traverse(o => { if (o.geometry && !o.isSprite) o.geometry.dispose(); }); gpuFree(obj.userData.res); }
+function gpuFreeObj(obj){ obj.traverse(o => { if (o.geometry && !o.isSprite && !o.userData.shared) o.geometry.dispose(); }); gpuFree(obj.userData.res); }
 /* ---------- Texturas procedurais (canvas) ---------- */
 function tex(size, draw, h = size){
   const c = document.createElement('canvas'); c.width = size; c.height = h;
@@ -1557,6 +1558,147 @@ for (const [x,z] of [[-1,-10],[21,-10],[-1,-27],[21,-27],[3,6.5],[-3,12],[3,12]]
 }
 
 /* ============================================================
+   MODELOS 3D · equipe e árvores em GLB (public/res/models), por cima dos bonecos procedurais
+   Recepcionista, barman, chef e camareiras trocam o boneco pelo modelo assim que o arquivo chega; garçom e
+   hóspedes seguem procedurais (não há modelo para eles). Só via http: em file://, ou se o arquivo falhar,
+   tudo fica como antes. Os modelos vêm sem animação: os rigados (esqueleto Mixamo) são animados pelos mesmos
+   controles do boneco (n.legs / n.arms), aplicados aos ossos; os estáticos só balançam com o corpo.
+   ============================================================ */
+const MODELS = {
+  attendant:{file:'attendant_detailed_unrigged', height:1.7, lowerArms:true},
+  barman:{file:'barman_game_ready', height:1.78},
+  chef:{file:'chef_rigged', height:1.86, rig:true},
+  maidF:{file:'housekeeper_female_rigged', height:1.66, rig:true},
+  maidM:{file:'housekeeper_male_rigged', height:1.76, rig:true},
+  oak:{file:'tree_oak_green'}, maple:{file:'tree_maple_red'},
+};
+const MODEL_YAW = -Math.PI/2;      // os personagens vêm olhando para +x; os bonecos do jogo olham para +z
+const modelCache = {};
+function loadModel(id){
+  if (!modelCache[id]) modelCache[id] = new Promise(res => {
+    const def = MODELS[id];
+    if (!def || typeof THREE.GLTFLoader !== 'function' || !/^https?:$/.test(location.protocol)) return res(null);
+    new THREE.GLTFLoader().load(`res/models/${def.file}.glb`, g => {
+      try { res(prepModel(g.scene, def)); } catch(e){ console.warn('[modelo]', def.file, e); res(null); }
+    }, undefined, () => res(null));
+  });
+  return modelCache[id];
+}
+/* Prepara o modelo-base uma vez: sombras, reflexo pela regra de M, braços abaixados (estáticos em pose T) e
+   medidas. As geometrias e materiais são compartilhados por todas as cópias: removeNPC não os libera. */
+function prepModel(root, def){
+  root.traverse(o => {
+    if (!o.isMesh) return;
+    o.castShadow = o.receiveShadow = true; o.userData.shared = true;
+    for (const m of [].concat(o.material)) if (m.isMeshStandardMaterial) m.envMapIntensity = envFor(m.metalness, m.roughness);
+    if (def.lowerArms && !o.isSkinnedMesh) lowerArms(o.geometry);
+  });
+  root.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(root);
+  def.min = box.min.clone(); def.size = box.getSize(new THREE.Vector3()); def.center = box.getCenter(new THREE.Vector3());
+  return root;
+}
+/* Cópia em escala: altura h (ou a do modelo), pés em y = 0, centrada em x/z e virada para +z */
+function placeModel(id, tpl, h){
+  const def = MODELS[id], model = def.rig ? THREE.SkeletonUtils.clone(tpl) : tpl.clone();
+  const k = (h || def.height) / def.size.y, holder = new THREE.Group();
+  model.scale.setScalar(k); model.position.set(-def.center.x*k, -def.min.y*k, -def.center.z*k);
+  holder.add(model); holder.userData.model = model;
+  return holder;
+}
+/* Personagem estático em pose T: abaixa os braços girando, em torno do ombro, os vértices fora da largura do
+   tronco (o modelo olha para +x, então o lado é z). Uma faixa de transição evita rasgar a malha no ombro. */
+function lowerArms(geo){
+  const p = geo.attributes.position, nr = geo.attributes.normal;
+  geo.computeBoundingBox();
+  const bb = geo.boundingBox, H = bb.max.y - bb.min.y, maxZ = Math.max(-bb.min.z, bb.max.z);
+  let ys = 0, c = 0;
+  for (let i = 0; i < p.count; i++) if (Math.abs(p.getZ(i)) > maxZ*.8){ ys += p.getY(i); c++; }
+  if (!c) return;
+  ys /= c;                                                      // altura do ombro = altura média das mãos abertas
+  let zs = 0;
+  for (let i = 0; i < p.count; i++){ const y = p.getY(i); if (y < ys - .07*H && y > ys - .2*H) zs = Math.max(zs, Math.abs(p.getZ(i))); }
+  const band = .05*H, ang = 1.36;
+  for (let i = 0; i < p.count; i++){
+    const z = p.getZ(i), y = p.getY(i), az = Math.abs(z);
+    if (az <= zs || y < ys - .12*H) continue;
+    const t = Math.min(1, (az - zs)/band), s = Math.sign(z), a = -s*ang*t*t*(3 - 2*t), cs = Math.cos(a), sn = Math.sin(a);
+    const dz = z - s*zs, dy = y - ys;
+    p.setZ(i, s*zs + dz*cs - dy*sn); p.setY(i, ys + dz*sn + dy*cs);
+    if (nr){ const nz = nr.getZ(i), ny = nr.getY(i); nr.setZ(i, nz*cs - ny*sn); nr.setY(i, nz*sn + ny*cs); }
+  }
+  p.needsUpdate = true; if (nr) nr.needsUpdate = true;
+  geo.computeBoundingBox(); geo.computeBoundingSphere();
+}
+/* Veste um NPC da equipe com o modelo do seu papel */
+const NPC_MODEL = {recep:'attendant', bartender:'barman', chef:'chef'};
+let maidModels = 0;
+function dressNPC(n){
+  const id = n.kind === 'maid' ? (maidModels++ % 2 ? 'maidM' : 'maidF') : NPC_MODEL[n.kind];
+  if (!id || (MODELS[id].rig && !THREE.SkeletonUtils)) return;
+  loadModel(id).then(tpl => {
+    if (!tpl || !NPCS.includes(n)) return;
+    const holder = placeModel(id, tpl);
+    holder.rotation.y = MODEL_YAW;
+    holder.traverse(o => { o.userData.iaRoot = n.g; if (o.isSkinnedMesh) o.frustumCulled = false; });
+    // o boneco some, mas pernas e braços continuam girando invisíveis: são os controles da animação dos ossos
+    n.body.children.forEach(c => { c.visible = false; });
+    n.body.add(holder); n.model = holder;
+    if (MODELS[id].rig) n.rig = makeRig(holder.userData.model);
+  });
+}
+/* Ossos do esqueleto Mixamo (o GLTFLoader tira o ':' do nome: 'mixamorig:Hips' vira 'mixamorigHips') */
+function makeRig(model){
+  const find = name => { let b = null; model.traverse(o => { if (!b && o.isBone && o.name.replace(/^mixamorig:?/, '') === name) b = o; }); return b; };
+  const R = {spine:find('Spine'), ul:[find('LeftUpLeg'), find('RightUpLeg')], ll:[find('LeftLeg'), find('RightLeg')],
+             ua:[find('LeftArm'), find('RightArm')], fa:[find('LeftForeArm'), find('RightForeArm')], hd:[find('LeftHand'), find('RightHand')], down:null};
+  if (R.ul.includes(null) || R.ua.includes(null) || R.fa.includes(null) || R.hd.includes(null)) return null;
+  for (const b of [R.spine, ...R.ul, ...R.ll, ...R.ua, ...R.fa]) if (b) b.userData.bind = b.quaternion.clone();
+  return R;
+}
+const _rq = new THREE.Quaternion(), _rp = new THREE.Quaternion(), _rb = new THREE.Quaternion(), _ra = new THREE.Quaternion();
+const _rv1 = new THREE.Vector3(), _rv2 = new THREE.Vector3(), RIG_X = new THREE.Vector3(1, 0, 0);
+/* Gira um osso, a partir da pose de ligação, por uma rotação dada no espaço do corpo do NPC (frente +z, lado x).
+   Funciona com qualquer eixo local do osso: a rotação é levada para o espaço do pai antes de aplicar. */
+function rotateBone(b, bodyInv, rel){
+  b.quaternion.copy(b.userData.bind);
+  b.parent.getWorldQuaternion(_rp); _rp.premultiply(bodyInv);
+  _rq.copy(_rp).invert().multiply(rel).multiply(_rp);
+  b.quaternion.premultiply(_rq);
+}
+function syncRig(n){
+  const R = n.rig;
+  n.body.getWorldQuaternion(_rb); _rb.invert();
+  if (!R.down){
+    // na primeira vez, mede a direção dos braços na pose de ligação para trazê-los junto ao corpo: primeiro o
+    // braço (ombro → cotovelo), depois, com ele já abaixado, o antebraço (cotovelo → mão), que vem dobrado para fora
+    const align = (from, to, b, side, fwd) => {
+      from.getWorldPosition(_rv1); to.getWorldPosition(_rv2);
+      const dir = _rv2.sub(_rv1).applyQuaternion(_rb).normalize();
+      return new THREE.Quaternion().setFromUnitVectors(dir.clone(), new THREE.Vector3(side*.2, -1, fwd).normalize());
+    };
+    for (const b of [...R.ua, ...R.fa]) b.quaternion.copy(b.userData.bind);
+    const side = R.ua.map((a, i) => { a.getWorldPosition(_rv1); R.fa[i].getWorldPosition(_rv2); return Math.sign(_rv2.sub(_rv1).applyQuaternion(_rb).x) || 1; });
+    R.down = R.ua.map((a, i) => align(a, R.fa[i], a, side[i], .06));
+    R.ua.forEach((a, i) => rotateBone(a, _rb, R.down[i]));
+    // o antebraço corrigido vira a nova pose de repouso, relativa ao braço: assim acompanha o balanço dele
+    R.fa.forEach((f, i) => { rotateBone(f, _rb, align(f, R.hd[i], f, side[i] * .6, .18)); f.userData.bind = f.quaternion.clone(); });
+  }
+  const lean = (n.legs[0].rotation.x - n.legs[1].rotation.x)*.04;
+  if (R.spine) rotateBone(R.spine, _rb, _ra.setFromAxisAngle(new THREE.Vector3(0, 1, 0), lean));
+  for (let i = 0; i < 2; i++){
+    const leg = n.legs[i].rotation.x, arm = n.arms[i].rotation.x;
+    // o balanço do boneco (±0,55 rad) é largo para uma perna realista: a coxa usa 70% dele e o joelho dobra só para trás
+    rotateBone(R.ul[i], _rb, _ra.setFromAxisAngle(RIG_X, leg*.7));
+    if (R.ll[i]) rotateBone(R.ll[i], _rb, _ra.setFromAxisAngle(RIG_X, Math.max(0, leg)*.85 + Math.abs(leg)*.1));
+    rotateBone(R.ua[i], _rb, _ra.setFromAxisAngle(RIG_X, arm).multiply(R.down[i]));
+    rotateBone(R.fa[i], _rb, _ra.setFromAxisAngle(RIG_X, Math.min(0, arm)*.5 - .12));
+  }
+}
+// roda depois da simulação (que gira n.legs / n.arms) e também com o jogo pausado, para a pose não voltar ao T
+ANIM.push(() => { for (const n of NPCS) if (n.rig) syncRig(n); });
+
+/* ============================================================
    NPCs · grafo de caminhos, modelos geométricos, animação de andar
    ============================================================ */
 const NODES = {
@@ -1622,10 +1764,10 @@ function makeNPCInner(kind, opts = {}){
   body.traverse(o => { if (o.isMesh) o.castShadow = true; });
   const tag = textSprite(.22); tag.position.y = kind === 'chef' ? 2.6 : 2.25; g.add(tag);
   const n = {g, body, kind, legs, arms, tag, path:[], speed:kind === 'guest' ? 1.5 : 1.9, phase:Math.random()*6, state:'idle', timer:0, onTimer:null, at:null, onArrive:null, work:0, pose:'stand'};
-  NPCS.push(n); return n;
+  NPCS.push(n); dressNPC(n); return n;
 }
 function removeNPC(n){
-  scene.remove(n.g); unregister(n.g); n.g.traverse(o => { if (o.geometry && !o.isSprite) o.geometry.dispose(); }); gpuFree(n.res);
+  scene.remove(n.g); unregister(n.g); n.g.traverse(o => { if (o.geometry && !o.isSprite && !o.userData.shared) o.geometry.dispose(); }); gpuFree(n.res);
   const i = NPCS.indexOf(n); if (i >= 0) NPCS.splice(i,1);
   const j = G.guests.indexOf(n); if (j >= 0) G.guests.splice(j,1);
 }
@@ -2320,27 +2462,6 @@ ANIM.push((dt, t) => {
   excl.visible = !MISSION.active; excl.position.y = 3.05 + (RM.matches ? 0 : Math.sin(t*3)*.08);
   maria.tag.userData.set(`Chef Maria · amizade ${G.friend}`, 'rgba(194,69,58,.95)', '#FFFFFF');
 });
-/* GLTF / Mixamo: a Chef Maria pode trocar o boneco procedural por um modelo rigado com animação do Mixamo.
-   Sem arquivo configurado, ou se o carregamento falhar, ela segue com o boneco procedural. */
-/* Registro dos modelos Mixamo (.glb). Só carrega com MIXAMO_LOAD = true, para não gerar erros de rede
-   enquanto os arquivos não estão em ./models. Sem o arquivo, cada personagem segue com o boneco procedural. */
-const MIXAMO_MODELS = {
-  maid: './models/maid.glb', receptionist: './models/receptionist.glb', chef: './models/chef.glb',
-  guest_tourist: './models/guest_tourist.glb', guest_exec: './models/guest_exec.glb', guest_vip: './models/guest_vip.glb'
-};
-const MIXAMO_LOAD = false;
-const MIXERS = [];
-function loadMixamo(key, onLoad){
-  if (!MIXAMO_LOAD || typeof THREE.GLTFLoader !== 'function') return;
-  new THREE.GLTFLoader().load(MIXAMO_MODELS[key], onLoad, undefined, () => { /* sem o arquivo, o boneco procedural continua */ });
-}
-loadMixamo('chef', gltf => {
-  maria.body.visible = false;
-  gltf.scene.traverse(o => { o.userData.iaRoot = maria.g; if (o.isMesh) o.castShadow = true; });
-  maria.g.add(gltf.scene);
-  if (gltf.animations.length){ const mx = new THREE.AnimationMixer(gltf.scene); mx.clipAction(gltf.animations[0]).play(); MIXERS.push(mx); }
-});
-ANIM.push((dt) => MIXERS.forEach(m => m.update(dt)));
 const mmss = s =>`${Math.floor(Math.max(0,s)/60)}:${pad2(Math.floor(Math.max(0,s) % 60))}`;
 function openChef(){ pcOpen = true; $('chef').hidden = false; renderChef(); if (controls.isLocked) controls.unlock(); }
 $('chefClose').onclick = () => closePC(false);
@@ -3262,10 +3383,18 @@ function buildCity(){
     lights.forEach(L => L.forEach((l, i) => l.m.material.color.copy(i === lit ? l.on : l.off)));
   });
 
-  // árvores em calçada
+  // árvores em calçada: tronco e copa simples até o modelo 3D chegar (carvalhos, com um bordo vermelho a cada 4)
+  let ti = 0;
   for (let x = -100; x <= 100; x += 20) for (const z of [15.4, 34.6]){
-    deco(new THREE.Mesh(new THREE.CylinderGeometry(.12, .15, 2.2, 8), MAT.trunk)).position.set(x, 1.2, z);
-    deco(new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), MAT.hedge)).position.set(x, 3, z);
+    const trunk = deco(new THREE.Mesh(new THREE.CylinderGeometry(.12, .15, 2.2, 8), MAT.trunk)); trunk.position.set(x, 1.2, z);
+    const crown = deco(new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), MAT.hedge)); crown.position.set(x, 3, z);
+    const id = ti++ % 4 === 3 ? 'maple' : 'oak', h = 5.6 + rnd()*1.4, yaw = rnd()*Math.PI*2;
+    loadModel(id).then(tpl => {
+      if (!tpl) return;
+      const t = placeModel(id, tpl, h); t.position.set(x, .12, z); t.rotation.y = yaw;
+      t.traverse(o => { o.castShadow = false; o.receiveShadow = false; });
+      scene.add(t); trunk.visible = crown.visible = false;
+    });
   }
 
   // carros: 3 no sentido leste (z 21.5) e 3 no oeste (z 28.5), dando a volta nas bordas
@@ -3298,6 +3427,18 @@ function buildCity(){
   });
 }
 buildCity();
+
+/* Árvores no gramado do hotel (fundos e cantos da frente). Só entram se o lugar estiver livre de colisões, e
+   ganham colisão no tronco quando o modelo chega; sem o modelo, nada muda no terreno. */
+for (const [x, z, id, h] of [[-27,-31,'oak',7], [-19,-32,'maple',6], [-11,-31.5,'oak',6.5], [-27.5,-22,'oak',6.8], [-27,-13,'maple',5.8],
+                              [26.5,-31,'oak',7.2], [29.5,-22,'maple',6.2], [29,-13.5,'oak',6.6], [-26.5,11.2,'oak',6.2], [27.5,11.2,'oak',6.2]]){
+  if (blocked(x, z, 1.2)) continue;
+  loadModel(id).then(tpl => {
+    if (!tpl) return;
+    const t = placeModel(id, tpl, h); t.position.set(x, 0, z); t.rotation.y = (x*7.3 + z*3.1) % (Math.PI*2);
+    scene.add(t); solid(x - .35, z - .35, x + .35, z + .35).floor = 0;   // chega depois: BUILD_FLOOR já pode ser outro
+  });
+}
 
 class World3D {
   /* Ruína: paredes desbotadas. Etapas seguintes: paredes limpas. Iluminação fica com as melhorias */

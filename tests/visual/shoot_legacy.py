@@ -27,6 +27,11 @@ SHOTS = [
     ('piscina', (2, 1.8, -9.5), (-4, 0, -26)),
     ('fachada', (4, 2.2, 27), (0, 5, 6)),
     ('rua', (-14, 1.7, 19), (14, 4, 10)),
+    # equipe com modelos 3D (o harness contrata recepcionista, camareira e chef antes das fotos)
+    ('equipe-recepcao', (1.6, 1.7, -1.2), (1.6, 1.2, -4.6)),
+    ('equipe-chef', (21.5, 1.7, -1.5), (26.1, 1.2, -1.5)),
+    ('equipe-camareira', (-11.5, 1.7, 0.6), (-9.6, 1.1, -0.8)),
+    ('gramado-fundos', (-4, 2.2, -12), (-22, 3, -28)),
 ]
 
 
@@ -54,8 +59,10 @@ def main():
         pg.on('console', lambda m: errors.append(m.text[:300]) if m.type == 'error' else None)
         # no SwiftShader (CPU) a carga com reflexos e pós-processamento passa de 30 s
         pg.goto(url, wait_until='load', timeout=240000)
-        # texturas fotográficas chegam depois do load: dá tempo para baixarem e subirem para a GPU
-        pg.wait_for_timeout(4000)
+        # equipe com modelos 3D nas fotos: contrata quem ainda não existe (só no navegador de teste)
+        pg.evaluate("""() => { for (const r of ['recep', 'maid', 'chef']) if (!STAFF.some(n => n.role === r)) { G.staff[r]++; spawnStaff(r, 0); } }""")
+        # texturas fotográficas e modelos chegam depois do load: dá tempo para baixarem e subirem para a GPU
+        pg.wait_for_timeout(6000)
         pg.evaluate("() => { const s = document.getElementById('start'); if (s) s.style.display = 'none'; }")
         for name, cam, look in SHOTS:
             r = pg.evaluate("""([c, l]) => {
