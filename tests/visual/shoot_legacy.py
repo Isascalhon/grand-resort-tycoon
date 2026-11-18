@@ -36,6 +36,8 @@ SHOTS = [
     ('fachada-longe', (0, 3, 44), (0, 16, 0)),
     ('entrada-marquise', (2.5, 1.7, 12.6), (0, 3.5, 6)),
     ('piscina-fundos', (8, 2, -24), (2, 7, -6)),
+    ('entrada-calcada', (3, 1.7, 17), (0, 3, 6)),
+    ('avenida', (-6, 1.7, 25), (0, 6, 8)),
 ]
 
 

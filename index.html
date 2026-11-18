@@ -476,11 +476,14 @@ function floorMat(t, w, d, tile, o = {}){ return M(0xFFFFFF, Object.assign({map:
 /* ---------- Colisões (AABB no plano xz) e oclusores do raycast ---------- */
 const solids = [], occluders = [];
 const BOUND = {x1:-29.5, x2:31.5, z1:-33.5, z2:13.5};
+// rua em frente ao hotel: as duas calçadas e a avenida. Sobrepõe o terreno em z 12,9…13,5 para não haver emenda
+const STREET = {x1:-70, x2:70, z1:12.9, z2:35.6};
 let BUILD_FLOOR = 0;   // andar dos sólidos criados agora: 0 = térreo, 1 = 2º andar
 function solid(x1,z1,x2,z2){ const c = {x1:Math.min(x1,x2), x2:Math.max(x1,x2), z1:Math.min(z1,z2), z2:Math.max(z1,z2), on:true, floor:BUILD_FLOOR}; solids.push(c); return c; }
 function solidOf(m, pad = 0){ m.updateMatrixWorld(true); const b = new THREE.Box3().setFromObject(m); return solid(b.min.x - pad, b.min.z - pad, b.max.x + pad, b.max.z + pad); }
 function blocked(x, z, r = .3){
-  if (x - r < BOUND.x1 || x + r > BOUND.x2 || z - r < BOUND.z1 || z + r > BOUND.z2) return true;
+  const inside = R => x - r >= R.x1 && x + r <= R.x2 && z - r >= R.z1 && z + r <= R.z2;
+  if (!inside(BOUND) && !inside(STREET)) return true;
   const lv = levelAt(x, z);
   for (const c of solids) if (c.on && c.floor === lv && x + r > c.x1 && x - r < c.x2 && z + r > c.z1 && z - r < c.z2) return true;
   return false;
@@ -1651,10 +1654,11 @@ function bush(x, z, s = 1){
   }
   solid(x - .5*s, z - .5*s, x + .5*s, z + .5*s);
 }
-[[-3,6.8],[3,6.8],[-6,7],[6,7],[9,9],[-9,11],[-1.8,-9],[8.2,-9],[21.5,-14],[21.5,-21],[0,-28.5],[13,-28.5],[-15,-12],[24,9.5]].forEach(([x,z]) => bush(x, z));
-for (const [x1,z1,x2,z2] of [[-29.5,-33.5,31.5,-32.9],[-29.5,12.9,31.5,13.5],[-29.5,-33.5,-28.9,13.5],[30.9,-33.5,31.5,13.5]])
+[[-3,6.8],[3,6.8],[-6,7],[6,7],[-9,11],[-1.8,-9],[8.2,-9],[21.5,-14],[21.5,-21],[0,-28.5],[13,-28.5],[-15,-12]].forEach(([x,z]) => bush(x, z));
+// cerca viva nos fundos e nas laterais do terreno; a frente é aberta para a calçada (entrada do hotel)
+for (const [x1,z1,x2,z2] of [[-29.5,-33.5,31.5,-32.9],[-29.5,-33.5,-28.9,10.13],[30.9,-33.5,31.5,10.13]])
   B(x2 - x1, 1.3, z2 - z1, MAT.hedge, (x1 + x2)/2, 0, (z1 + z2)/2);
-for (const [x,z] of [[-1,-10],[21,-10],[-1,-27],[21,-27],[3,6.5],[-3,12],[3,12]]){
+for (const [x,z] of [[-1,-10],[21,-10],[-1,-27],[21,-27]]){
   CY(.06,.07,2.6, M(0x2E3438,{metalness:.5}), x, 0, z, scene, 8); solid(x - .1, z - .1, x + .1, z + .1);
   mesh(new THREE.BoxGeometry(.28,.36,.28), new THREE.MeshStandardMaterial({color:0xFFE7A3, emissive:0xFFC060, emissiveIntensity:.5}), x, 2.78, z);
 }
@@ -1804,14 +1808,15 @@ ANIM.push(() => { for (const n of NPCS) if (n.rig) syncRig(n); });
    NPCs · grafo de caminhos, modelos geométricos, animação de andar
    ============================================================ */
 const NODES = {
-  OUT:[0,12.8], ENT:[0,8], LS:[0,4.5], LC:[0,2.6], LW:[-6,0], LE:[6.5,.4], LN:[5.75,-4.4], PT:[5.75,-8.6], DK:[5.75,-10.6],
+  // SW: calçada em frente à entrada (de onde os hóspedes chegam e por onde vão embora)
+  SW:[0,16.6], OUT:[0,12.8], ENT:[0,8], LS:[0,4.5], LC:[0,2.6], LW:[-6,0], LE:[6.5,.4], LN:[5.75,-4.4], PT:[5.75,-8.6], DK:[5.75,-10.6],
   CW:[-9.6,0], CA:[-12.5,0], CB:[-21.5,0], R101:[-12.5,-5], R102:[-12.5,5], R103:[-21.5,-5], R104:[-21.5,5],
   DW:[9.5,0], DM:[9.8,6.4], KD:[19,6.4], KI:[22,6.2], ST:[26.1,-1.5],
   /* 2º andar: o terceiro valor é o andar do nó (0 térreo, 1 superior). SB/SU são o pé e o topo da escada */
   SB:[0.9,4.75,0], SU:[7.1,4.75,1], UH:[6.6,2.5,1], UC:[0,2.5,1], UW:[-5.8,2.5,1],
   D201:[-5.8,-.4,1], U201:[-7.2,-2.5,1], D202:[-1.4,-.4,1], U202:[-2.6,-2.5,1], D203:[4.4,-.4,1], U203:[1.8,-2.6,1],
 };
-const EDGES = [['OUT','ENT'],['ENT','LS'],['LS','LC'],['LC','LW'],['LC','LE'],['LE','LN'],['LN','PT'],['PT','DK'],
+const EDGES = [['SW','OUT'],['OUT','ENT'],['ENT','LS'],['LS','LC'],['LC','LW'],['LC','LE'],['LE','LN'],['LN','PT'],['PT','DK'],
   ['LW','CW'],['CW','CA'],['CA','CB'],['CA','R101'],['CA','R102'],['CB','R103'],['CB','R104'],
   ['LE','DW'],['DW','DM'],['DM','KD'],['KD','KI'],['KI','ST'],
   ['LS','SB'],['SB','SU'],['SU','UH'],['UH','UC'],['UC','UW'],['UW','D201'],['UC','D202'],['UC','D203'],
@@ -1939,8 +1944,12 @@ function bestRoomFor(p){
   return roomsForGuest().map(r => ({r, v:reviewOf(p, r)}))
     .sort((a,b) => rank[b.v.q] - rank[a.v.q] || b.v.pay - a.v.pay)[0]?.r || null;
 }
+/* Saída do hotel: atravessa a entrada até a calçada e some depois de andar por ela, para um dos lados */
+function leaveHotel(n){ const side = n.g.position.x < 0 ? -1 : 1; route(n, 'SW', [[side*30, NODES.SW[1]]], () => removeNPC(n)); }
 function spawnGuest(){
-  const profile = makeProfile(), n = makeNPC('guest', PERSONAS[profile.persona]); n.g.position.set((Math.random() - .5)*2, 0, 12.8); n.at = 'OUT';
+  // chega pela calçada, vindo de um dos lados, e entra pela frente do hotel
+  const profile = makeProfile(), n = makeNPC('guest', PERSONAS[profile.persona]), side = Math.random() < .5 ? -1 : 1;
+  n.g.position.set(side*(10 + Math.random()*6), 0, NODES.SW[1]); n.g.rotation.y = -side*Math.PI/2; n.at = 'SW';
   n.state = 'queue'; n.inLine = false; n.profile = profile; decorateClient(n, profile.persona);
   n.patience = 75 + (G.staff.recep ? [15,30,45][G.staffLv.recep - 1] : 0) + (G.upg.light ? 10 : 0);
   G.queue.push(n); G.guests.push(n);
@@ -2001,19 +2010,20 @@ function checkout(n){
   n.state = 'checkout'; const room = n.room;
   room.guest = null; dirtyRoom(room); addRep(1);
   toast(`Checkout do quarto ${room.id} · o quarto precisa de limpeza`);
-  route(n, 'OUT', [], () => removeNPC(n));
+  leaveHotel(n);
 }
 const GUEST_TAG = {toRoom:'Indo para o quarto', room:'Descansando', toFood:'Com fome', waitFood:'Esperando o prato', eating:'Comendo', toPool:'Indo à piscina', relax:'Relaxando · drinks', checkout:'Checkout', leaving:'Desistiu de esperar',
   toChefTable:'Cliente especial', waitChef:'Aguardando a Chef Maria', chefEat:'Provando o prato', vipLeave:'Indo embora'};
 function guestTick(n, dt){
   if (n.state === 'queue'){
-    n.patience -= dt;
+    // a paciência só corre depois que o hóspede passa da calçada para dentro do terreno do hotel
+    if (n.g.position.z < NODES.OUT[1]) n.patience -= dt;
     const p = Math.ceil(n.patience);
     n.tag.userData.set(`Check-in · ${p}s`, p < 20 ? 'rgba(232,106,90,.95)' : 'rgba(216,166,74,.95)', '#2A1B14');
     if (n.patience <= 0){
       G.queue.splice(G.queue.indexOf(n), 1); updateQueue(); n.inLine = false; unregister(n.g); addRep(-4); n.state = 'leaving';
       toast('Um hóspede desistiu de esperar na fila · reputação caiu', 'bad');
-      route(n, 'OUT', [], () => removeNPC(n));
+      leaveHotel(n);
     }
     return;
   }
@@ -2736,7 +2746,7 @@ function showRating(r, stars, parts, money, up){
     <p class="reward">+${fmt(money)}${stars === 5 ? ' · bônus de 5 estrelas!' : ''}${up ? ` · amizade +${up}` : ''}</p>`;
   el.hidden = false; clearTimeout(showRating.t); showRating.t = setTimeout(() => { el.hidden = true; }, 7000);
 }
-function vipLeave(g, t){ t.guest = null; g.table = null; pose(g, 'stand'); g.g.position.set(t.seat.x, 0, t.seat.z); g.state = 'vipLeave'; route(g, 'OUT', [], () => removeNPC(g)); }
+function vipLeave(g, t){ t.guest = null; g.table = null; pose(g, 'stand'); g.g.position.set(t.seat.x, 0, t.seat.z); g.state = 'vipLeave'; leaveHotel(g); }
 function cleanupMission(){
   MISSION.active = false; MISSION.cooking = false;
   pan.visible = false; chopPieces.visible = false; carryG.visible = false;
@@ -3497,6 +3507,37 @@ function buildHotelExterior(stage){
 }
 let HX_LIVE = null;
 ANIM.push(dt => { if (HX_LIVE) HX_LIVE.update(dt, camera); });
+
+/* ---------- Entrada do hotel ----------
+   Praça aberta entre a frente das torres e a calçada, no lugar da antiga cerca viva: piso em placas, floreiras
+   baixas separadas (o centro fica livre para quem chega da calçada), dois postes de entrada que acendem à noite,
+   balizadores de aço e o púlpito do manobrista. Fixa em todas as etapas. */
+{
+  const ground0 = s => { s.floor = 0; return s; };
+  const plaza = new THREE.Mesh(new THREE.PlaneGeometry(61, 3.87), pbrMat('sidewalkStone', 61, 3.87, 4));
+  plaza.rotation.x = -Math.PI/2; plaza.position.set(1, .02, 12.065); plaza.receiveShadow = true; scene.add(plaza);
+  // meio-fio entre a praça e a calçada, interrompido na entrada
+  for (const [x1, x2] of [[-29.5, -7], [7, 31.5]]) B(x2 - x1, .1, .2, MAT.stone, (x1 + x2)/2, 0, 13.9, scene, false);
+  // floreiras: base de pedra, folhagem aparada e flores
+  for (const x of [-25, -20, -15, -10, 10, 15, 20, 25]){
+    B(2.2, .55, .9, MAT.stone, x, 0, 12.4);
+    B(2.0, .32, .7, MAT.hedge, x, .55, 12.4);
+    for (let k = 0; k < 6; k++) SPH(.07, M(BUSH_FLOWERS[k % BUSH_FLOWERS.length], {roughness:.6}), x - .85 + k*.34, .92, 12.4 + (k % 2 ? .18 : -.18), scene, 6);
+    ground0(solid(x - 1.15, 11.9, x + 1.15, 12.9));
+  }
+  // postes de entrada com lanterna
+  const lantern = GFX.glow(new THREE.MeshStandardMaterial({color:0xFFF1D6, emissive:0xFFD9A0, roughness:.3}), 'emissiveIntensity', .3, 3);
+  for (const x of [-6.8, 6.8]){
+    CY(.09, .12, 3.6, MAT.steelDark, x, 0, 13.4, scene, 10); CY(.22, .26, .25, MAT.steelDark, x, 0, 13.4, scene, 12);
+    B(.42, .5, .42, lantern, x, 3.6, 13.4, scene, false); CY(.3, .05, .2, MAT.steelDark, x, 4.1, 13.4, scene, 4);
+    ground0(solid(x - .2, 13.2, x + .2, 13.6));
+  }
+  // balizadores de aço (dá para passar entre eles)
+  for (const x of [-3.6, -2.4, 2.4, 3.6]){ CY(.09, .1, .8, MAT.steel, x, 0, 13.6, scene, 12); SPH(.095, MAT.steel, x, .8, 13.6, scene, 10); ground0(solid(x - .12, 13.48, x + .12, 13.72)); }
+  // púlpito do manobrista
+  B(.7, 1.1, .5, MAT.woodDark, 6, 0, 12.9); B(.8, .06, .6, MAT.gold, 6, 1.1, 12.9);
+  ground0(solid(5.6, 12.6, 6.4, 13.2));
+}
 function buildFacadeInner(stage){
   while (FACADE.children.length){ const c = FACADE.children.pop(); c.traverse(o => { if (o.geometry) o.geometry.dispose(); }); }
   facadeSolids.splice(0).forEach(s => { const i = solids.indexOf(s); if (i >= 0) solids.splice(i, 1); });
@@ -3813,10 +3854,12 @@ function buildCity(){
   for (let x = -102.5; x <= 110; x += 15) for (const z of [17.2, 32.8]){
     deco(new THREE.Mesh(new THREE.CylinderGeometry(.06, .08, 4.6, 8), MAT.steelDark)).position.set(x, 2.3, z);
     deco(new THREE.Mesh(new THREE.SphereGeometry(.2, 8, 6), lampMat)).position.set(x, 4.8, z);
+    if (Math.abs(x) < STREET.x2) solid(x - .12, z - .12, x + .12, z + .12).floor = 0;     // o jogador anda pela calçada
   }
   const lights = [];
   for (const x of [-30, 44]){
     deco(new THREE.Mesh(new THREE.CylinderGeometry(.07, .08, 5, 8), MAT.steelDark)).position.set(x, 2.5, 17.3);
+    solid(x - .12, 17.18, x + .12, 17.42).floor = 0;
     deco(B(.4, 1.1, .3, MAT.black, x, 3.6, 17.3));
     lights.push([0xE23B2E, 0xF2B630, 0x3FD17B].map((c, i) => {
       const m = new THREE.Mesh(new THREE.SphereGeometry(.1, 10, 8), new THREE.MeshBasicMaterial({color:c}));
@@ -3832,6 +3875,8 @@ function buildCity(){
   // árvores em calçada: tronco e copa simples até o modelo 3D chegar (carvalhos, com um bordo vermelho a cada 4)
   let ti = 0;
   for (let x = -100; x <= 100; x += 20) for (const z of [15.4, 34.6]){
+    if (x === 0 && z < 20) continue;                       // em frente à entrada do hotel a calçada fica livre
+    if (Math.abs(x) < STREET.x2) solid(x - .3, z - .3, x + .3, z + .3).floor = 0;
     const trunk = deco(new THREE.Mesh(new THREE.CylinderGeometry(.12, .15, 2.2, 8), MAT.trunk)); trunk.position.set(x, 1.2, z);
     const crown = deco(new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), MAT.hedge)); crown.position.set(x, 3, z);
     const id = ti++ % 4 === 3 ? 'maple' : 'oak', h = 5.6 + rnd()*1.4, yaw = rnd()*Math.PI*2;
@@ -3867,6 +3912,9 @@ function buildCity(){
   ANIM.push((dt) => {
     if (RM.matches) { CARS.forEach(c => c.g.position.set(c.x, 0, c.laneZ)); return; }
     CARS.forEach(c => {
+      // freia para o jogador: parado na faixa até 7 m à frente, o carro espera
+      const p = camera.position, ahead = (p.x - c.x)*c.dir;
+      if (Math.abs(p.z - c.laneZ) < 1.6 && ahead > 0 && ahead < 7) return;
       c.x += c.dir*c.v*dt; if (c.x > 110) c.x -= 220; if (c.x < -110) c.x += 220;
       c.g.position.set(c.x, 0, c.laneZ);
       c.wheels.forEach(w => w.rotation.y += c.dir*c.v*dt/.32);
