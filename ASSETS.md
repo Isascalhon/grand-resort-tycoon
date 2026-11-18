@@ -59,3 +59,7 @@ o texto da licença acompanha cada arquivo em `public/res/fonts/`.
 | Pacifico | Letreiros em script | Copyright 2018 The Pacifico Project Authors (https://github.com/googlefonts/Pacifico) | @fontsource/pacifico@5.3.0 (pacifico-latin-400-normal.woff) | pacifico.typeface.json + pacifico-OFL.txt |
 | Gloock | Letreiros serifados (display) | Copyright 2022 The Gloock Project Authors (https://github.com/duartp/gloock) | @fontsource/gloock@5.3.0 (gloock-latin-400-normal.woff) | gloock.typeface.json + gloock-OFL.txt |
 | Outfit | Placas e sinalização | Copyright 2021 The Outfit Project Authors (https://github.com/Outfitio/Outfit-Fonts) | @fontsource/outfit@5.3.0 (outfit-latin-700-normal.woff) | outfit-bold.typeface.json + outfit-bold-OFL.txt |
+
+## Piso da cozinha (checker_floor)
+
+- `public/res/tex/checker_floor/diff.jpg` e `nor.jpg`: texturas `FloorsCheckerboard_S_Diffuse.jpg` e `FloorsCheckerboard_S_Normal.jpg` dos exemplos oficiais do three.js (https://threejs.org/examples/textures/floors/), distribuídas no repositório mrdoob/three.js (licença MIT).
