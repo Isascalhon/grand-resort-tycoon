@@ -1,0 +1,10 @@
+# O cmd.exe só interpreta rótulos e blocos de arquivos .bat corretamente com CRLF
+*.bat text eol=crlf
+
+# Assets binários: nunca converter fim de linha
+*.jpg binary
+*.png binary
+*.hdr binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
