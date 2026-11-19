@@ -2862,8 +2862,10 @@ function parkCart(n){
   n.g.remove(c); scene.add(c); c.position.set(_cv.x, n.g.position.y, _cv.z); c.rotation.set(0, ry, 0);
 }
 function grabCart(n){ const c = n.cart; if (!c || c.parent === n.g) return; scene.remove(c); n.g.add(c); c.position.set(0, 0, .82); c.rotation.set(0, 0, 0); }
-// onde o carrinho espera: no corredor em frente ao quarto, ou no pé da escada para quartos de cima
-const cartNode = room => { const rn = roomNode(room); return (NODES[rn][2] || 0) === 0 ? ADJ[rn][0] : 'SB'; };
+// onde o carrinho espera: no corredor em frente ao quarto; para quartos de cima, no lobby ao lado da escada (o
+// carrinho não sobe degraus e, parado no pé da escada, entrava nos primeiros degraus e sumia)
+const CART_LOBBY = [-1.6, 5.0];
+const cartPark = room => { const rn = roomNode(room); return (NODES[rn][2] || 0) === 0 ? {node:ADJ[rn][0], extra:[]} : {node:'LS', extra:[CART_LOBBY]}; };
 function maidHome(n, cb){ const [x, z] = STAFF_ROOM.slots[n.slot || 0]; route(n, 'SR', [[x, z + .9]], () => { n.g.rotation.y = Math.PI; if (cb) cb(); }); }
 /* Recepção · poltronas SheenChair e luminária Iridescence Lamp (modelos glTF dos exemplos do three.js). O GLTFLoader
    r128 não lê KHR_materials_sheen: o tecido vira MeshPhysicalMaterial com sheen para manter o brilho de veludo.
@@ -3392,7 +3394,7 @@ function staffTick(n, dt){
       n.cool = (n.cool || 0) - dt;
       // a camareira só entra em quarto sujo, sem outra camareira e sem hóspede dentro
       const room = n.cool <= 0 && allRooms().find(r => r.owned && r.state === 'dirty' && !r.maid && !r.guest && r.level <= G.staffLv.maid);
-      if (room){ room.maid = n; n.room = room; n.state = 'going'; toggleDoor(room, true); n.tag.userData.set(`Limpando ${room.id}`, 'rgba(43,179,177,.95)', '#10302F'); route(n, cartNode(room), [], () => { parkCart(n); route(n, roomNode(room), [], () => { n.state = 'cleaning'; n.work = 0; }); }); }
+      if (room){ room.maid = n; n.room = room; n.state = 'going'; toggleDoor(room, true); n.tag.userData.set(`Limpando ${room.id}`, 'rgba(43,179,177,.95)', '#10302F'); { const pk = cartPark(room); route(n, pk.node, pk.extra, () => { parkCart(n); route(n, roomNode(room), [], () => { n.state = 'cleaning'; n.work = 0; }); }); } }
     } else if (n.state === 'cleaning'){
       n.work += dt; if (!RM.matches) n.arms[1].rotation.x = -1 + Math.sin(T*10)*.5;
       if (n.work > 2.5){
@@ -3400,7 +3402,7 @@ function staffTick(n, dt){
         if (!n.room.dirt.length){
           const done = n.room; n.room.maid = null; n.state = 'back'; n.cool = [20,14,10][G.staffLv.maid - 1]/payOf('maid').speed;
           if (G.staffLv.maid >= 2) addRep(1);
-          n.tag.userData.set(staffName('maid'), 'rgba(43,179,177,.95)', '#10302F'); route(n, cartNode(done), [], () => { grabCart(n); maidHome(n, () => { n.state = 'idle'; }); });
+          n.tag.userData.set(staffName('maid'), 'rgba(43,179,177,.95)', '#10302F'); { const pk = cartPark(done); route(n, pk.node, pk.extra, () => { grabCart(n); maidHome(n, () => { n.state = 'idle'; }); }); }
         }
       }
     }
@@ -4883,7 +4885,7 @@ function hxMats(){
     ruby:phys(0xB0182F, {roughness:.35, clearcoat:.8, clearcoatRoughness:.15}), roof:std(0x3B2F4E, {metalness:.55, roughness:.45}),
     carpet:std(0x8E1427, {roughness:.95}), water:std(0x3FA3B8, {roughness:.05, metalness:.1}),
     windowGlass:phys(0x5D5578, {metalness:.1, roughness:.04, transparent:true, opacity:.42, depthWrite:false, envMapIntensity:1.6}),
-    clearGlass:phys(0xDFE8F0, {roughness:.03, transparent:true, opacity:.22, side:THREE.DoubleSide, depthWrite:false, envMapIntensity:1.4}),
+    clearGlass:phys(0xD3E2EA, {roughness:.03, transparent:true, opacity:.09, side:THREE.DoubleSide, depthWrite:false, envMapIntensity:.45}),
     room:basic(0xFFFFFF), warm:basic(0xFFD9A8), lamp:std(0xFFF1D6, {emissive:0xFFD9A0, roughness:.3}),
     neonGold:basic(0xFFC86A), neonRed:basic(0xFF5A2E),
   };
@@ -5337,7 +5339,7 @@ const STAIR_MAT = {
 };
 GFX.relief(STAIR_MAT.tread, 'walnut_veneer', {tile:1.2, bump:.006, tone:.55}); GFX.relief(STAIR_MAT.side, 'walnut_veneer', {tile:1.2, bump:.006, tone:.5}); GFX.relief(STAIR_MAT.runner, 'poly_wool_herringbone', {tile:2, bump:.015, tone:.35});
 const RAIL_WOOD = M(0x6A4630, {roughness:.45}); GFX.relief(RAIL_WOOD, 'walnut_veneer', {tile:1.2, bump:.006, tone:.6});
-const RAIL_GLASS = new THREE.MeshPhysicalMaterial({color:0xDDEFF5, transparent:true, opacity:.2, roughness:.04, metalness:0, side:THREE.DoubleSide, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1});
+const RAIL_GLASS = new THREE.MeshPhysicalMaterial({color:0xB9D3DA, transparent:true, opacity:.07, roughness:.03, metalness:0, envMapIntensity:.15, side:THREE.DoubleSide, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1});
 function glassPanel(pts, z){
   const s = new THREE.Shape(); pts.forEach(([x, y], i) => i ? s.lineTo(x, y) : s.moveTo(x, y));
   const m = new THREE.Mesh(new THREE.ShapeGeometry(s), RAIL_GLASS);   // uma face só: duas faces transparentes no mesmo objeto piscavam
