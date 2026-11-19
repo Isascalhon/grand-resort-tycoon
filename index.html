@@ -314,6 +314,14 @@ body.sr-on .hud,body.sr-on .help,body.sr-on #ch,body.sr-on #prompt{display:none}
 const $ = id => document.getElementById(id);
 const RM = matchMedia('(prefers-reduced-motion: reduce)');
 const fmt = n => '$' + Math.round(n).toLocaleString('pt-BR');
+/* Recursos de res/: no build (dist/) ficam em res/; no Pages servido direto da branch ficam em public/res/.
+   Tenta a pasta que já funcionou e, se falhar, a outra; a primeira que responder vale para o resto. */
+let RES_BASE = 'res/';
+function loadRes(loader, path, onLoad, onError){
+  const alt = RES_BASE === 'res/' ? 'public/res/' : 'res/';
+  loader.load(RES_BASE + path, onLoad, undefined, () =>
+    loader.load(alt + path, r => { RES_BASE = alt; onLoad(r); }, undefined, onError || (() => {})));
+}
 
 /* ---------- Renderizador, cena, câmera ---------- */
 const renderer = new THREE.WebGLRenderer({canvas:$('gl'), antialias:true});
@@ -696,7 +704,7 @@ const GFX = (() => {
   function loadPhoto(slug, map, done){
     if (!photoOK) return;
     const key = `${slug}/${map}`;
-    if (!photoCache[key]) photoCache[key] = new Promise(res => loader.load(`res/tex/${key}.jpg`, res, undefined, () => res(null)));
+    if (!photoCache[key]) photoCache[key] = new Promise(res => loadRes(loader, `tex/${key}.jpg`, res, () => res(null)));
     photoCache[key].then(img => { if (img) done(img); });
   }
   /* Troca a imagem de uma base procedural e de todas as suas cópias, ajustando a repetição pelo fator k */
@@ -1253,7 +1261,7 @@ function photoImg(slug, kind = 'diff'){
   const k = slug + '/' + kind;
   return PHOTO_IMG[k] = PHOTO_IMG[k] || new Promise(res => {
     if (!/^https?:$/.test(location.protocol)) return res(null);
-    new THREE.ImageLoader().load(`res/tex/${k}.jpg`, res, undefined, () => res(null));
+    loadRes(new THREE.ImageLoader(), `tex/${k}.jpg`, res, () => res(null));
   });
 }
 function floorTex(k){
@@ -2154,8 +2162,8 @@ function kitchenRun(x0, x1, zc, depth, face, h = .9){
   floor(20.02, -8, 28, 8, KFLOOR, .014);
   if (/^https?:$/.test(location.protocol)){
     const L = new THREE.TextureLoader(), prep = (t, srgb) => { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(8/1.8, 16/1.8); t.anisotropy = renderer.capabilities.getMaxAnisotropy(); if (srgb) t.encoding = THREE.sRGBEncoding; return gpuTrack(t); };
-    L.load('res/tex/checker_floor/diff.jpg', t => { KFLOOR.map = prep(t, true); KFLOOR.needsUpdate = true; });
-    L.load('res/tex/checker_floor/nor.jpg', t => { KFLOOR.normalMap = prep(t, false); KFLOOR.normalScale.set(.8, .8); KFLOOR.needsUpdate = true; });
+    loadRes(L, 'tex/checker_floor/diff.jpg', t => { KFLOOR.map = prep(t, true); KFLOOR.needsUpdate = true; });
+    loadRes(L, 'tex/checker_floor/nor.jpg', t => { KFLOOR.normalMap = prep(t, false); KFLOOR.normalScale.set(.8, .8); KFLOOR.needsUpdate = true; });
   } }
 for (const [z, ry] of [[-7.88, 0], [7.88, Math.PI]]){ const p = new THREE.Mesh(new THREE.PlaneGeometry(7.8, 2.7), M(0xFFFFFF, {map:rep(KMAT.zelTex, 3.9, 1.35), roughness:.22})); p.position.set(24, 1.35, z); p.rotation.y = ry; scene.add(p); }
 // bancadas: fundo (norte), sul e ilha central
@@ -2559,9 +2567,9 @@ function loadModel(id){
   if (!modelCache[id]) modelCache[id] = new Promise(res => {
     const def = MODELS[id];
     if (!def || typeof THREE.GLTFLoader !== 'function' || !/^https?:$/.test(location.protocol)) return res(null);
-    new THREE.GLTFLoader().load(`res/models/${def.file}.glb`, g => {
+    loadRes(new THREE.GLTFLoader(), `models/${def.file}.glb`, g => {
       try { res(prepModel(g.scene, def)); } catch(e){ console.warn('[modelo]', def.file, e); res(null); }
-    }, undefined, () => res(null));
+    }, () => res(null));
   });
   return modelCache[id];
 }
@@ -4562,7 +4570,7 @@ const HX_FONTS = {};
 if (/^https?:$/.test(location.protocol) && THREE.FontLoader){
   let got = 0;
   for (const [k, f] of [['gloock', 'gloock'], ['pacifico', 'pacifico'], ['outfit', 'outfit-bold']])
-    new THREE.FontLoader().load(`res/fonts/${f}.typeface.json`, font => { HX_FONTS[k] = font; if (++got === 3 && FACADE_BUILT) buildFacade(FACADE_STAGE); }, undefined, () => {});
+    loadRes(new THREE.FontLoader(), `fonts/${f}.typeface.json`, font => { HX_FONTS[k] = font; if (++got === 3 && FACADE_BUILT) buildFacade(FACADE_STAGE); });
 }
 class HxEllipse extends THREE.Curve {
   constructor(cx, y, cz, rx, rz){ super(); Object.assign(this, {cx, y, cz, rx, rz}); }
