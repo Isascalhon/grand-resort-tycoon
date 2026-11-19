@@ -63,3 +63,4 @@ o texto da licença acompanha cada arquivo em `public/res/fonts/`.
 ## Piso da cozinha (checker_floor)
 
 - `public/res/tex/checker_floor/diff.jpg` e `nor.jpg`: texturas `FloorsCheckerboard_S_Diffuse.jpg` e `FloorsCheckerboard_S_Normal.jpg` dos exemplos oficiais do three.js (https://threejs.org/examples/textures/floors/), distribuídas no repositório mrdoob/three.js (licença MIT).
+- `public/res/models/sheen_chair.glb`, `barn_lamp.glb` e `iridescence_lamp.glb`: modelos glTF usados nos exemplos oficiais do three.js (SheenChair, AnisotropyBarnLamp e IridescenceLamp, do repositório Khronos glTF-Sample-Assets, https://github.com/KhronosGroup/glTF-Sample-Assets). Licença e autoria de cada modelo conforme o README do modelo no repositório de origem.

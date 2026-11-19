@@ -943,32 +943,61 @@ function toast(msg, kind = ''){
 }
 let AC = null;
 function audio(){
-  if (!AC){ try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e){ return null; } }
+  if (!AC){ try { AC = new (window.AudioContext || window.webkitAudioContext)(); audioBus(AC); } catch(e){ AC = null; return null; } }
   if (AC.state === 'suspended') AC.resume();
   return AC;
 }
-function tone(freq, dur, type = 'sine', vol = .2, delay = 0){
-  const a = audio(); if (!a) return;
-  const t = a.currentTime + delay, o = a.createOscillator(), g = a.createGain();
-  o.type = type; o.frequency.setValueAtTime(freq, t);
-  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .006); g.gain.exponentialRampToValueAtTime(.0001, t + dur);
-  o.connect(g); g.connect(a.destination); o.start(t); o.stop(t + dur + .05);
+/* Barramento de áudio: efeitos, ambiência e música → mestre → compressor → saída. Um envio de reverb (sala gerada
+   por ruído com decaimento) muda de quantidade conforme o ambiente: muito no lobby de mármore, quase nada ao ar livre */
+const AUDIO_OPT = {vol:.9, muted:false};
+function audioBus(a){
+  const comp = a.createDynamicsCompressor(); comp.threshold.value = -18; comp.knee.value = 12; comp.ratio.value = 3.5; comp.attack.value = .004; comp.release.value = .22;
+  const master = a.createGain(); master.gain.value = AUDIO_OPT.muted ? 0 : AUDIO_OPT.vol; master.connect(comp); comp.connect(a.destination);
+  const verb = a.createConvolver(), len = Math.floor(a.sampleRate*2.4), ir = a.createBuffer(2, len, a.sampleRate);
+  for (let c = 0; c < 2; c++){ const d = ir.getChannelData(c); for (let i = 0; i < len; i++) d[i] = (Math.random()*2 - 1)*Math.pow(1 - i/len, 3.2)*Math.min(1, i/(a.sampleRate*.012)); }
+  verb.buffer = ir; const send = a.createGain(); send.gain.value = .15; send.connect(verb); verb.connect(master);
+  const bus = () => { const g = a.createGain(); g.connect(master); g.connect(send); return g; };
+  const sfx = bus(), amb = bus(), mus = bus(); mus.gain.value = .9;
+  const nb = a.createBuffer(1, a.sampleRate*2, a.sampleRate), nd = nb.getChannelData(0); for (let i = 0; i < nd.length; i++) nd[i] = Math.random()*2 - 1;
+  // ruído marrom (grave) para vento, ar-condicionado e trânsito
+  const bb = a.createBuffer(1, a.sampleRate*2, a.sampleRate), bd = bb.getChannelData(0); let last = 0;
+  for (let i = 0; i < bd.length; i++){ last = (last + .02*(Math.random()*2 - 1))/1.02; bd[i] = last*3.5; }
+  Object.assign(a, {master, comp, send, sfx, amb, mus, noise:nb, brown:bb});
 }
+function env(g, t, vol, att, dur){ g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + att); g.gain.exponentialRampToValueAtTime(.0001, t + dur); }
+function outNode(a, o){
+  let dest = o.dest || a.sfx;
+  if (o.pan && a.createStereoPanner){ const pn = a.createStereoPanner(); pn.pan.value = Math.max(-1, Math.min(1, o.pan)); pn.connect(dest); dest = pn; }
+  return dest;
+}
+function tone(freq, dur, type = 'sine', vol = .2, delay = 0, o = {}){
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + delay, osc = a.createOscillator(), g = a.createGain();
+  osc.type = type; osc.frequency.setValueAtTime(freq, t); if (o.to) osc.frequency.exponentialRampToValueAtTime(o.to, t + dur);
+  let src = osc;
+  // ondas quadradas e dente de serra soam "de videogame": um passa-baixa arredonda o timbre
+  if (o.lp || type === 'square' || type === 'sawtooth'){ const f = a.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = o.lp || Math.min(9000, freq*4); osc.connect(f); src = f; }
+  env(g, t, vol*.8, o.att || .006, dur); src.connect(g); g.connect(outNode(a, o)); osc.start(t); osc.stop(t + dur + .05);
+}
+function sfxNoise(dur, o = {}){
+  const a = audio(); if (!a) return;
+  const t = a.currentTime + (o.delay || 0), sr = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+  sr.buffer = o.brown ? a.brown : a.noise; sr.loop = true; sr.playbackRate.value = o.rate || 1;
+  f.type = o.type || 'bandpass'; f.frequency.setValueAtTime(o.f || 1000, t); if (o.f2) f.frequency.exponentialRampToValueAtTime(o.f2, t + dur); f.Q.value = o.q ?? 1;
+  env(g, t, o.vol ?? .2, o.att || .003, dur);
+  sr.connect(f); f.connect(g); g.connect(outNode(a, o)); sr.start(t, Math.random()*1.5); sr.stop(t + dur + .05);
+}
+/* Sino com parciais inarmônicos: campainha, taças, caixa registradora */
+function bellTone(f, dur, vol, delay = 0, o = {}){ [[1, 1], [2.0, .5], [2.76, .35], [4.07, .22], [5.4, .12]].forEach(([k, v], i) => tone(f*k, dur/(1 + i*.6), 'sine', vol*v, delay, o)); }
 const SFX = {
-  bell(){ tone(1568,1.5,'sine',.25); tone(3136,.9,'sine',.07); tone(2349,1.2,'triangle',.05); },
-  coin(){ tone(988,.1,'square',.05); tone(1319,.28,'square',.05,.08); },
-  buy(){ tone(523,.16,'triangle',.15); tone(659,.16,'triangle',.15,.1); tone(784,.35,'triangle',.15,.2); },
-  door(){ tone(140,.3,'sawtooth',.03); tone(90,.2,'sine',.08,.05); },
-  error(){ tone(220,.18,'square',.05); tone(185,.25,'square',.05,.12); },
-  sizzle(){ for (let i = 0; i < 6; i++) tone(2400 + Math.random()*1800, .06, 'square', .015, i*.04); },
-  clean(){
-    const a = audio(); if (!a) return;
-    const n = a.sampleRate * .35, buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
-    for (let i = 0; i < n; i++) d[i] = (Math.random()*2 - 1) * (1 - i/n);
-    const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
-    f.type = 'bandpass'; f.frequency.value = 2600; g.gain.value = .25; s.buffer = buf;
-    s.connect(f); f.connect(g); g.connect(a.destination); s.start();
-  },
+  bell(){ bellTone(1975, 2.4, .2); sfxNoise(.02, {type:'highpass', f:5000, vol:.12}); },
+  coin(){ bellTone(2637, .45, .07); bellTone(3520, .55, .06, .07); sfxNoise(.09, {type:'highpass', f:6000, vol:.05, delay:.02}); },
+  buy(){ [523, 659, 784, 1047].forEach((f, i) => { tone(f, .5, 'sine', .11, i*.075); tone(f*4, .12, 'sine', .025, i*.075); }); },
+  door(){ sfxNoise(.42, {f:520, f2:260, q:6, vol:.08}); tone(95, .18, 'sine', .14, .32); sfxNoise(.06, {type:'lowpass', f:400, vol:.12, delay:.32}); },
+  error(){ tone(392, .14, 'triangle', .07, 0, {lp:1800}); tone(294, .22, 'triangle', .07, .11, {lp:1500}); },
+  sizzle(){ sfxNoise(.6, {type:'highpass', f:3500, vol:.07, att:.03}); for (let i = 0; i < 8; i++) sfxNoise(.012, {type:'highpass', f:5000, vol:.06, delay:Math.random()*.55}); },
+  clean(){ sfxNoise(.35, {f:2600, q:.8, vol:.18, att:.02}); sfxNoise(.3, {f:1800, f2:3200, q:1.2, vol:.1, delay:.18}); },
+  chop(){ sfxNoise(.025, {f:2600, q:1.5, vol:.22}); tone(150, .08, 'sine', .16, .005); },
 };
 function rr(g, x, y, w, h, r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
 /* Etiqueta flutuante (sprite) com texto atualizável */
@@ -1060,20 +1089,54 @@ ANIM.push(dt => { if (bellShake > 0){ bellShake -= dt; bell.rotation.z = Math.si
 { const v = CY(.09,.07,.24, MAT.white, 2.4, 1.13, -3.5);
   for (let i = 0; i < 5; i++){ const f = SPH(.045, M(i % 2 ? 0xE9A3E0 : 0xC86BC8), 2.4 + Math.cos(i)*.12, 1.62 + i*.05, -3.5 + Math.sin(i)*.1, scene, 8); f.scale.y = .6; }
   CY(.006,.006,.45, M(0x4C7A3A), 2.4, 1.36, -3.5, scene, 6); }
-// sofás de couro, mesa de centro de vidro e tapete
-function sofa(x, z, rotY, mat = MAT.leather){
+// sofás de veludo com almofadas soltas, poltronas, mesa de centro de mármore e latão e tapete com borda.
+// Materiais físicos como nos exemplos do three.js: veludo com sheen, latão escovado e mármore envernizado.
+const LOBBY_VELVET = gpuTrack(new THREE.MeshPhysicalMaterial({color:0xB8A894, roughness:.85, metalness:0, sheen:new THREE.Color(0x6A5A4A), envMapIntensity:.12}));
+const LOBBY_ACCENT = gpuTrack(new THREE.MeshPhysicalMaterial({color:0x2F5A4C, roughness:.8, metalness:0, sheen:new THREE.Color(0x4E8A76), envMapIntensity:.12}));
+const LOBBY_BRASS = M(0xC9A04A, {metalness:.9, roughness:.3});
+function sofa(x, z, rotY, mat = LOBBY_VELVET){
   const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = rotY; scene.add(g);
-  B(2.4,.45,.9, mat, 0, 0, 0, g); B(2.4,.6,.22, mat, 0, .45, -.34, g);
-  B(.2,.3,.9, mat, -1.1, .45, 0, g); B(.2,.3,.9, mat, 1.1, .45, 0, g);
-  for (const u of [-.4,.4]) B(.02,.02,.6, M(0x3A1A0C), u, .455, .08, g, false);
+  // pés cônicos de latão, base estofada, encosto e braços arredondados
+  for (const sx of [-1.06, 1.06]) for (const sz of [-.33, .33]) CY(.022, .015, .12, LOBBY_BRASS, sx, 0, sz, g, 12);
+  SB(2.36, .2, .88, .05, mat, 0, .12, 0, g);
+  SB(2.36, .54, .16, .06, mat, 0, .3, -.37, g);
+  for (const s of [-1, 1]) SB(.17, .36, .88, .07, mat, s*1.095, .3, 0, g, {puff:.06});
+  // três almofadas de assento e três de encosto, soltas e infladas
+  for (const u of [-.68, 0, .68]){
+    SB(.67, .15, .68, .06, mat, u, .31, .06, g, {puff:.16});
+    const b = SB(.66, .4, .17, .08, mat, u, .44, -.25, g, {puff:.28}); b.rotation.x = -.14;
+  }
+  // almofadas decorativas de veludo verde e manta dobrada no braço
+  for (const s of [-1, 1]){ const p = SB(.4, .4, .11, .06, LOBBY_ACCENT, s*.74, .47, -.13, g, {puff:.6}); p.rotation.set(-.25, s*.2, s*.12); }
+  SB(.3, .05, .7, .02, M(0xE9DFCC, {roughness:.95}), 1.095, .66, .02, g, {wrinkle:.004});
   solidOf(g, .02); return g;
 }
 sofa(-6.7, 3.1, Math.PI/2); sofa(-3.3, 3.1, -Math.PI/2);
-floor(-6.9,1.4,-3.1,4.8, M(0xE7D8BC,{roughness:1}), .02);
+// tapete de lã com borda dupla
+floor(-6.9,1.4,-3.1,4.8, M(0x3E4A44,{roughness:1}), .02);
+floor(-6.78,1.52,-3.22,4.68, M(0xD9C6A4,{roughness:1}), .022);
+floor(-6.7,1.6,-3.3,4.6, M(0xEDE3CF,{roughness:1}), .024);
+// mesa de centro: tampo de mármore com borda arredondada sobre estrutura de latão, prateleira de vidro fumê,
+// bandeja com vela, livros de arte empilhados e orquídea branca
 { const t = new THREE.Group(); t.position.set(-5, 0, 3.1); scene.add(t);
-  for (const [dx,dz] of [[-.5,-.8],[.5,-.8],[-.5,.8],[.5,.8]]) CY(.025,.025,.42, MAT.gold, dx, 0, dz, t, 8);
-  B(1.2,.03,1.8, MAT.glass, 0, .42, 0, t);
-  [[0xD85B4A,-.2,-.4],[0x3D7CC9,.2,.3],[0xF2D35B,-.1,.5]].forEach(([c,dx,dz],i) => { const m = B(.3,.012,.4, M(c), dx, .455 + i*.012, dz, t, false); m.rotation.y = i*.4; });
+  SB(1.0, .05, 1.6, .02, pbrMat('marbleCarrara', 1, 1.6, 1.2, {roughness:.14}), 0, .4, 0, t);
+  for (const sz of [-.68, .68]){
+    for (const sx of [-.42, .42]) CY(.014, .014, .4, LOBBY_BRASS, sx, 0, sz, t, 10);
+    B(.86, .025, .025, LOBBY_BRASS, 0, 0, sz, t); B(.86, .025, .025, LOBBY_BRASS, 0, .375, sz, t);
+  }
+  for (const sx of [-.42, .42]) B(.025, .025, 1.36, LOBBY_BRASS, sx, .375, 0, t);
+  B(.84, .012, 1.34, gpuTrack(new THREE.MeshPhysicalMaterial({color:0x3A3330, roughness:.08, transparent:true, opacity:.6, clearcoat:1})), 0, .13, 0, t, false);
+  [[0x2F5A4C, -.15, -.1, .3], [0xC9A04A, -.1, .2, -.25]].forEach(([c, dx, dz, ry], i) => { const m = B(.28, .012, .36, M(c, {roughness:.6}), dx, .142 + i*.012, dz, t, false); m.rotation.y = ry; });
+  const ty = .45;
+  CY(.2, .19, .018, LOBBY_BRASS, 0, ty, -.4, t, 40);
+  CY(.045, .045, .09, M(0xF4EFE6, {roughness:.6}), -.07, ty + .018, -.4, t, 20);
+  { const f = SPH(.011, new THREE.MeshBasicMaterial({color:0xFFC870}), -.07, ty + .125, -.4, t, 8); f.scale.y = 1.8; }
+  CY(.035, .03, .06, M(0x2A2420, {roughness:.3}), .08, ty + .018, -.45, t, 16);
+  let y = ty;
+  [[0x1F2A36, .34, .25, .035], [0xE8DCC4, .3, .22, .03], [0x7A2A2A, .26, .19, .026]].forEach(([c, w, d, h], i) => { const b = B(w, h, d, M(c, {roughness:.7}), .12, y, .38, t, false); b.rotation.y = i*.12 - .08; y += h; });
+  CY(.055, .04, .13, M(0xF7F5F0, {roughness:.25}), -.18, ty, .2, t, 20);
+  for (let i = 0; i < 3; i++){ const st = CY(.003, .003, .3 + i*.05, M(0x4C7A3A), -.18 + (i - 1)*.012, ty + .12, .2, t, 5); st.rotation.z = (i - 1)*.15; }
+  for (let i = 0; i < 7; i++){ const p = SPH(.028, M(i % 3 ? 0xF7F2F4 : 0xE9C3DA, {roughness:.5}), -.18 + Math.sin(i*.9)*.07, ty + .36 + i*.022, .2 + Math.cos(i*.9)*.03, t, 10); p.scale.set(1, .45, 1); }
   solidOf(t, .02); }
 // costela-de-adão (vasos nas quinas)
 function plant(x, z, s = 1){
@@ -1101,25 +1164,38 @@ plant(-7.3,-5.3); plant(-7.3,5.3); plant(7.3,3.2); plant(3.9,-5.3); plant(-2.6,7
   { const top = mesh(new THREE.CylinderGeometry(.02,.02,1.1,8), MAT.gold, 0, 1.78, 0, c); top.rotation.z = Math.PI/2; }
   B(.6,.7,.4, M(0x2F5D8C), -.2, .18, 0, c); B(.4,.45,.3, M(0xC2453A), .3, .18, .05, c); B(.45,.3,.35, M(0xE3C48A), -.15, .88, 0, c);
   solidOf(c, .05); }
-// lustre de cristal
+// lustre de cristal em cascata: canopla e haste de latão, três aros (o maior em cima) com fios de gotas lapidadas
+// (vidro físico com verniz, desenhado em InstancedMesh como nos exemplos do three.js), braços com lâmpadas-vela
+// e esfera de luz no meio
 const crystals = [];
 { const ch = new THREE.Group(); ch.position.set(0, 5, 1); scene.add(ch);
-  CY(.012,.012,.7, MAT.gold, 0, -.7, 0, ch, 6);
-  for (const [r,y] of [[.85,-1.25],[.55,-.95],[.3,-.75]]){
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(r,.025,8,40), MAT.gold); ring.rotation.x = Math.PI/2; ring.position.y = y; ch.add(ring);
-    const n = Math.round(r*28);
+  const brass = M(0xD8B060, {metalness:.9, roughness:.22});
+  mesh(new THREE.CylinderGeometry(.22, .3, .08, 32), brass, 0, -.04, 0, ch);
+  CY(.014, .014, .9, brass, 0, -.95, 0, ch, 8); CY(.012, .012, .5, brass, 0, -1.45, 0, ch, 8);
+  const drop = new THREE.LatheGeometry([[0,-.07],[.012,-.06],[.026,-.035],[.03,-.012],[.02,.012],[.006,.03],[0,.035]].map(([r, y]) => new THREE.Vector2(r, y)), 8);
+  const N = 6, lists = [];
+  for (let k = 0; k < N; k++){ crystals.push(gpuTrack(new THREE.MeshPhysicalMaterial({color:0xF4FBFF, emissive:0xCFE8FF, emissiveIntensity:.35, roughness:0, metalness:0, clearcoat:1, clearcoatRoughness:0, transparent:true, opacity:.85, reflectivity:1, envMapIntensity:1.5}))); lists.push([]); }
+  const dummy = new THREE.Object3D();
+  for (const [r, y, n, len] of [[1.0, -.95, 22, 5], [.72, -1.15, 16, 4], [.44, -1.35, 10, 3]]){
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, .022, 10, 64), brass); ring.rotation.x = Math.PI/2; ring.position.y = y; ch.add(ring);
+    for (const s of [0, Math.PI/2, Math.PI, Math.PI*1.5]){ const sp = mesh(new THREE.CylinderGeometry(.006, .006, r, 6), brass, Math.cos(s)*r/2, y, Math.sin(s)*r/2, ch, false); sp.rotation.set(0, -s, Math.PI/2); }
     for (let i = 0; i < n; i++){
-      const a = i/n*Math.PI*2;
-      const cm = new THREE.MeshStandardMaterial({color:0xF2FAFF, emissive:0xBFE4FF, emissiveIntensity:.4, roughness:0, metalness:.2});
-      const cr = new THREE.Mesh(new THREE.OctahedronGeometry(.045), cm); cr.scale.y = 1.8;
-      cr.position.set(Math.cos(a)*r, y - .1, Math.sin(a)*r); ch.add(cr); crystals.push(cr);
+      const a = i/n*Math.PI*2 + r*7, cx = Math.cos(a)*r, cz = Math.sin(a)*r, L = len - (i % 2);
+      for (let j = 0; j < L; j++){ const last = j === L - 1; dummy.position.set(cx, y - .06 - j*.07, cz); dummy.rotation.set(0, a, 0); dummy.scale.setScalar(last ? 1.25 : .5); dummy.updateMatrix(); lists[(i + j) % N].push(dummy.matrix.clone()); }
     }
   }
-  const bulb = new THREE.Mesh(new THREE.SphereGeometry(.14,16,8), new THREE.MeshBasicMaterial({color:0xFFF1C9})); bulb.position.y = -1.0; ch.add(bulb);
+  lists.forEach((L, k) => { const im = new THREE.InstancedMesh(drop, crystals[k], L.length); L.forEach((m, i) => im.setMatrixAt(i, m)); im.instanceMatrix.needsUpdate = true; im.frustumCulled = false; ch.add(im); });
+  const flame = new THREE.MeshBasicMaterial({color:0xFFE6B0});
+  for (let i = 0; i < 8; i++){ const a = i/8*Math.PI*2 + .2, x = Math.cos(a)*.58, z = Math.sin(a)*.58;
+    const arm = mesh(new THREE.CylinderGeometry(.008, .008, .58, 6), brass, x/2, -.98, z/2, ch, false); arm.rotation.set(0, -a, Math.PI/2);
+    CY(.026, .02, .03, brass, x, -.98, z, ch, 12); CY(.012, .012, .08, MAT.white, x, -.95, z, ch, 8);
+    const f = mesh(new THREE.SphereGeometry(.02, 10, 8), flame, x, -.85, z, ch, false); f.scale.y = 1.6; }
+  const bulb = new THREE.Mesh(new THREE.SphereGeometry(.15, 24, 12), new THREE.MeshBasicMaterial({color:0xFFF1C9})); bulb.position.y = -1.12; ch.add(bulb);
+  { const fin = mesh(new THREE.ConeGeometry(.05, .14, 16), brass, 0, -1.55, 0, ch, false); fin.rotation.x = Math.PI; }
 }
 lamp(0, 3.7, 1, 0xFFE2B0, 2.4, 24);
 lamp(0, 3.4, -4.5, 0xFFE2B0, .9, 10);
-ANIM.push((dt, t) => { if (RM.matches) return; crystals.forEach((c,i) => c.material.emissiveIntensity = .25 + .6*Math.max(0, Math.sin(t*2.4 + i*1.37))); });
+ANIM.push((dt, t) => { if (RM.matches) return; crystals.forEach((m, i) => m.emissiveIntensity = .2 + .55*Math.max(0, Math.sin(t*2.4 + i*1.37))); });
 
 /* ============================================================
    ZONA B · BLOCO DE QUARTOS  (corredor x -26..-8, z -2..2)
@@ -2114,8 +2190,23 @@ kitchenRun(21.5, 24.5, -3.5, 1.0, 0, .9);
   for (let k = 0; k < 5; k++) mesh(lp([[0,0],[.08,0],[.11,.06],[.115,.065],[0,.065]], 20), MAT.white, 24.6, 2.08 + k*.05, -7.7);
   for (const [i, c] of [0xD9B068, 0x9A3A2A, 0x5A7A3A, 0xE8D7B5].entries()){ CY(.06, .06, .2, M(0xEFF6F6, {transparent:true, opacity:.4, roughness:.05}), 22.4 + i*.4, 2.53, -7.7, scene, 16); CY(.055, .055, .14, M(c, {roughness:.8}), 22.4 + i*.4, 2.535, -7.7, scene, 14); CY(.064, .064, .03, KMAT.brass, 22.4 + i*.4, 2.73, -7.7, scene, 16); }
 }
-// pendentes de latão sobre a ilha
-for (const x of [22.3, 23.7]){ CY(.006, .006, 1.3, KMAT.black, x, 2.7, -3.5, scene, 6); mesh(new THREE.CylinderGeometry(.08, .24, .22, 24, 1, true), KMAT.brass, x, 2.6, -3.5).material.side = THREE.DoubleSide; SPH(.05, new THREE.MeshBasicMaterial({color:0xFFF0CF}), x, 2.6, -3.5, scene, 10); }
+// iluminação profissional da cozinha: pendente linear de LED sobre a ilha (perfil de alumínio preto, difusor leitoso e
+// cabos de aço até o teto) e pendentes industriais de esmalte verde com lâmpada de filamento sobre a bancada da frente
+{ const prof = M(0x1A1C1E, {metalness:.6, roughness:.35}), diff = new THREE.MeshBasicMaterial({color:0xF4F8FF}), cable = M(0x9AA0A6, {metalness:.8, roughness:.3});
+  const g = new THREE.Group(); g.position.set(23, 2.78, -3.5); scene.add(g);
+  B(2.8, .06, .09, prof, 0, 0, 0, g); B(2.84, .015, .1, KMAT.brass, 0, .06, 0, g, false);
+  { const d = new THREE.Mesh(new THREE.PlaneGeometry(2.74, .07), diff); d.rotation.x = Math.PI/2; d.position.y = -.002; g.add(d); }
+  for (const s of [-1, 1]){ CY(.003, .003, 4 - 2.86, cable, s*1.2, .075, 0, g, 6); CY(.03, .03, .012, prof, s*1.2, 4 - 2.78 - .012, 0, g, 16); }
+  lamp(23, 2.6, -3.5, 0xF4F8FF, .9, 8);
+  const enamel = M(0x24443A, {roughness:.3, metalness:.1, side:THREE.DoubleSide}), bulbM = new THREE.MeshBasicMaterial({color:0xFFD08A});
+  const dome = new THREE.LatheGeometry([[.23,0],[.215,.04],[.17,.1],[.1,.15],[.04,.175],[.03,.2],[.03,.24]].map(([r, y]) => new THREE.Vector2(r, y)), 32);
+  for (const x of [23.1, 25.1]){
+    mesh(dome, enamel, x, 2.45, 7.0);
+    CY(.004, .004, 4 - 2.69, KMAT.black, x, 2.69, 7.0, scene, 6);
+    const b = SPH(.045, bulbM, x, 2.47, 7.0, scene, 12); b.scale.y = 1.3; b.castShadow = false;
+  }
+  lamp(24.1, 2.3, 7.0, 0xFFD9A0, .6, 6);
+}
 // passe: lâmpadas de aquecimento sobre os pratos prontos
 for (const z of [-.6, -2, -3.4]){ CY(.006, .006, 2.9, KMAT.black, 20, 1.95, z, scene, 6); mesh(new THREE.CylinderGeometry(.06, .16, .2, 20, 1, true), KMAT.brass, 20, 1.85, z).material.side = THREE.DoubleSide; SPH(.045, new THREE.MeshBasicMaterial({color:0xFF7A3A}), 20, 1.85, z, scene, 10); }
 
@@ -2315,23 +2406,27 @@ function umbrella(x, z){
   const c = mesh(new THREE.ConeGeometry(1.5,.6,20,1,true), new THREE.MeshStandardMaterial({map:TEX.stripes, side:THREE.DoubleSide, roughness:.9}), x, 2.55, z);
   SPH(.06, M(0xF5C542), x, 2.88, z, scene, 8); return c;
 }
-umbrella(3.2,-12.4); umbrella(9,-12.4); umbrella(14.8,-12.4); umbrella(19.5,-24.5); umbrella(1,-25);
+umbrella(3.2,-12.4); umbrella(9,-12.4); umbrella(14.8,-12.4);   // os do fundo do deck viraram conjuntos espreguiçadeira + guarda-sol (MODELOS 3D)
 
 /* Pool bar tropical: teto de sapê, balcão curvo, banquetas submersas, garrafas e liquidificadores */
 const BAR = {x:18.6, z:-19, earn:0};
-{ const g = new THREE.Group(); g.position.set(BAR.x, 0, BAR.z); scene.add(g);
+{ const g = new THREE.Group(); g.position.set(BAR.x, 0, BAR.z); scene.add(g); BAR.g = g;
+  // ripas de madeira tropical na frente do balcão e tampo de pedra polida com verniz
+  const BAR_SLATS = M(0xFFFFFF, {map:rep(tex(256, (c, s) => { for (let i = 0; i < 16; i++){ c.fillStyle = `hsl(26,${40 + (i % 3)*5}%,${30 + ((i*7) % 10)}%)`; c.fillRect(i*s/16, 0, s/16, s); c.fillStyle = 'rgba(0,0,0,.4)'; c.fillRect(i*s/16, 0, 3, s); } }), 1, 1), roughness:.6});
+  const BAR_TOP = gpuTrack(new THREE.MeshPhysicalMaterial({color:0xF2ECE2, map:rep(TEX.marble, 1.5, 1.5), roughness:.16, clearcoat:1, clearcoatRoughness:.06}));
   const ring = (ro, ri, a0, a1) => { const s = new THREE.Shape(); s.absarc(0,0,ro,a0,a1,false); s.absarc(0,0,ri,a1,a0,true); return s; };
   const A0 = Math.PI*2/3, A1 = Math.PI*4/3;
-  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(ring(1.9,1.45,A0,A1), {depth:1.1, bevelEnabled:false, curveSegments:24}), M(0x8A5A34,{roughness:.8}));
+  const body = new THREE.Mesh(new THREE.ExtrudeGeometry(ring(1.9,1.45,A0,A1), {depth:1.1, bevelEnabled:false, curveSegments:24}), BAR_SLATS);
   body.rotation.x = -Math.PI/2; body.castShadow = body.receiveShadow = true; g.add(body);
-  const top = new THREE.Mesh(new THREE.ExtrudeGeometry(ring(2.0,1.38,A0 - .03,A1 + .03), {depth:.07, bevelEnabled:false, curveSegments:24}), M(0xE8D7B5,{roughness:.5}));
+  const top = new THREE.Mesh(new THREE.ExtrudeGeometry(ring(2.0,1.38,A0 - .03,A1 + .03), {depth:.07, bevelEnabled:true, bevelThickness:.012, bevelSize:.012, bevelSegments:3, curveSegments:24}), BAR_TOP);
   top.rotation.x = -Math.PI/2; top.position.y = 1.1; top.castShadow = true; g.add(top);
-  for (let k = 0; k < 16; k++){ const a = A0 + (A1 - A0)*k/15; B(.03,1.05,.03, M(0x5E3A1E), Math.cos(a)*1.92, 0, -Math.sin(a)*1.92, g, false); }
+  // apoio de pés de latão com suportes, fita de LED sob o tampo e rodapé escuro
+  { const arc = A1 - A0, ringArc = (r, y, tube, mat) => { const t = new THREE.Mesh(new THREE.TorusGeometry(r, tube, 8, 64, arc), mat); t.rotation.set(Math.PI/2, 0, A0); t.position.y = y; g.add(t); return t; };
+    ringArc(2.07, .24, .02, MAT.gold); ringArc(1.97, 1.075, .007, new THREE.MeshBasicMaterial({color:0xFFC27A})); ringArc(1.91, .04, .045, M(0x2A1E16, {roughness:.6}));
+    for (let k = 0; k < 5; k++){ const a = A0 + arc*(k + .5)/5, s = mesh(new THREE.CylinderGeometry(.012, .012, .17, 8), MAT.gold, Math.cos(a)*1.99, .24, -Math.sin(a)*1.99, g, false); s.rotation.set(0, a, Math.PI/2); } }
   // prateleira ao fundo com garrafas coloridas
   B(.4,1.7,2.6, MAT.woodDark, 1.45, 0, 0, g);
   for (const y of [.95,1.35]) B(.35,.04,2.6, M(0x3A2618), 1.2, y, 0, g);
-  const bc = [0x3FA35F,0xC2453A,0xF2A93B,0x2F6FB0,0xE8C77A,0x7D4A84,0x5FD3C7,0xE86A5A,0x9AD37F,0xF5D86A];
-  for (const y of [.99,1.39]) bc.forEach((c,i) => { CY(.04,.045,.24 + (i % 3)*.04, new THREE.MeshStandardMaterial({color:c, roughness:.15, transparent:true, opacity:.9}), 1.2, y, -1.1 + i*.245, g, 10); });
   // liquidificadores girando
   const blades = [];
   for (const [a,c] of [[Math.PI*.92,0xF27BA8],[Math.PI*1.08,0xF2A93B]]){
@@ -2411,6 +2506,7 @@ ANIM.push((dt, t) => { if (!RM.matches) palms.forEach(p => { p.crown.rotation.z 
 /* Arbusto: agrupamento de copas irregulares (icosaedros com ruído), tons de verde variados e flores */
 const BUSH_GREENS = [0x2E7D3A, 0x3C8A45, 0x4E9B4A, 0x2F6E3E, 0x5BA752];
 const BUSH_FLOWERS = [0xE86A8A, 0xF2D15C, 0xFFFFFF];
+const BUSHES = [];
 function bush(x, z, s = 1){
   seed = Math.floor(Math.abs(x*13 + z*29)) + 1;
   const g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
@@ -2423,6 +2519,7 @@ function bush(x, z, s = 1){
     const f = new THREE.Mesh(new THREE.SphereGeometry(.05*s, 6, 4), M(BUSH_FLOWERS[Math.floor(rnd()*BUSH_FLOWERS.length)], {roughness:.6}));
     f.position.set((rnd()-.5)*.9*s, (.55 + rnd()*.25)*s, (rnd()-.5)*.9*s); g.add(f);
   }
+  BUSHES.push({g, s});
   solid(x - .5*s, z - .5*s, x + .5*s, z + .5*s);
 }
 [[-3,6.8],[3,6.8],[-6,7],[6,7],[-9,11],[-1.8,-9],[8.2,-9],[21.5,-14],[21.5,-21],[0,-28.5],[13,-28.5],[-15,-12]].forEach(([x,z]) => bush(x, z));
@@ -2442,12 +2539,19 @@ for (const [x,z] of [[-1,-10],[21,-10],[-1,-27],[21,-27]]){
    controles do boneco (n.legs / n.arms), aplicados aos ossos; os estáticos só balançam com o corpo.
    ============================================================ */
 const MODELS = {
-  attendant:{file:'attendant_detailed_unrigged', height:1.7, lowerArms:true},
-  barman:{file:'barman_game_ready', height:1.78},
+  attendant:{file:'attendant_detailed_unrigged', height:1.7, lowerArms:true, legs:true},
+  barman:{file:'barman_game_ready', height:1.78, legs:true},
   chef:{file:'chef_rigged', height:1.86, rig:true},
   maidF:{file:'housekeeper_female_rigged', height:1.66, rig:true},
   maidM:{file:'housekeeper_male_rigged', height:1.76, rig:true},
   oak:{file:'tree_oak_green'}, maple:{file:'tree_maple_red'},
+  sheenChair:{file:'sheen_chair', height:.82}, barnLamp:{file:'barn_lamp'}, iriLamp:{file:'iridescence_lamp', height:.42},
+  // hóspedes (os estáticos vêm de braços abertos e são abaixados como a recepcionista)
+  guestF01:{file:'hospede_f_01', height:1.68, lowerArms:true, legs:true}, guestFem:{file:'hospede_feminina_game_ready_rigged', height:1.68, rig:true},
+  guestTrop:{file:'hospede_tropical_game_ready_rigged', height:1.78, rig:true}, guestSuit:{file:'hotel_guest_suit', height:1.8, lowerArms:true, legs:true},
+  guestFamily:{file:'hotel_guest_woman_child_rebuilt', height:1.7, legs:true}, guestTraveler:{file:'traveler_hotel_guest', height:1.76, lowerArms:true, legs:true},
+  // objetos
+  bush:{file:'bush_hotel_game'}, cart:{file:'cleaning_cart_hotel_game', height:.95}, loungerSet:{file:'espreguicadeira_guarda-sol', height:2.4},
 };
 const MODEL_YAW = -Math.PI/2;      // os personagens vêm olhando para +x; os bonecos do jogo olham para +z
 const modelCache = {};
@@ -2470,6 +2574,7 @@ function prepModel(root, def){
     for (const m of [].concat(o.material)) if (m.isMeshStandardMaterial) m.envMapIntensity = envFor(m.metalness, m.roughness);
     if (def.lowerArms && !o.isSkinnedMesh) lowerArms(o.geometry);
   });
+  if (def.legs){ const ms = []; root.traverse(o => { if (o.isMesh && !o.isSkinnedMesh) ms.push(o); }); if (ms.length === 1) def.legRig = legRigGeo(ms[0].geometry); }
   root.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(root);
   def.min = box.min.clone(); def.size = box.getSize(new THREE.Vector3()); def.center = box.getCenter(new THREE.Vector3());
@@ -2507,34 +2612,130 @@ function lowerArms(geo){
   p.needsUpdate = true; if (nr) nr.needsUpdate = true;
   geo.computeBoundingBox(); geo.computeBoundingSphere();
 }
-/* Veste um NPC da equipe com o modelo do seu papel */
+/* Veste um NPC com o modelo do seu papel; hóspedes recebem o modelo da persona (ou um sorteado entre os turistas).
+   O boneco procedural fica guardado em n.procParts: modelos estáticos voltam a ele para sentar e deitar */
 const NPC_MODEL = {recep:'attendant', bartender:'barman', chef:'chef'};
+const GUEST_MODEL = {'Mãe & Filha':'guestFamily', 'Executiva':'guestSuit', 'Cliente Sênior VIP':'guestFem', 'Turista Tropical':'guestTrop', 'Mochileira Eco-Turista':'guestTraveler'};
 let maidModels = 0;
 function dressNPC(n){
-  const id = n.kind === 'maid' ? (maidModels++ % 2 ? 'maidM' : 'maidF') : NPC_MODEL[n.kind];
+  const id = n.kind === 'maid' ? (maidModels++ % 2 ? 'maidM' : 'maidF')
+    : n.kind === 'guest' ? (GUEST_MODEL[n.personaName] || pick(['guestF01', 'guestTraveler', 'guestTrop', 'guestFem'])) : NPC_MODEL[n.kind];
   if (!id || (MODELS[id].rig && !THREE.SkeletonUtils)) return;
   loadModel(id).then(tpl => {
     if (!tpl || !NPCS.includes(n)) return;
     const holder = placeModel(id, tpl);
+    if (!MODELS[id].rig && MODELS[id].legRig) n.legRig = attachLegRig(holder, MODELS[id]);
     holder.rotation.y = MODEL_YAW;
     holder.traverse(o => { o.userData.iaRoot = n.g; if (o.isSkinnedMesh) o.frustumCulled = false; });
     // o boneco some, mas pernas e braços continuam girando invisíveis: são os controles da animação dos ossos
-    n.body.children.forEach(c => { c.visible = false; });
+    n.procParts = n.body.children.slice();
+    n.procParts.forEach(c => { c.visible = false; });
     n.body.add(holder); n.model = holder;
     if (MODELS[id].rig) n.rig = makeRig(holder.userData.model);
+    if (!n.rig && n.pose !== 'stand'){ holder.visible = false; n.procParts.forEach(c => { c.visible = true; }); }
   });
 }
+/* Arbustos do jardim com o modelo bush_hotel_game (mesma colisão e escala de cada arbusto procedural) */
+loadModel('bush').then(tpl => {
+  if (!tpl) return;
+  for (const {g, s} of BUSHES){ g.children.forEach(c => { c.visible = false; }); const h = placeModel('bush', tpl, 1.15*s); h.rotation.y = (g.position.x*7 + g.position.z*3) % (Math.PI*2); g.add(h); }
+});
+/* Conjuntos espreguiçadeira + guarda-sol no fundo do deck (sem o modelo, voltam os guarda-sóis listrados) */
+{ const spots = [[19.5, -24.5, -.6], [1, -25, .6]];
+  spots.forEach(([x, z]) => solid(x - 1, z - 1, x + 1, z + 1));
+  loadModel('loungerSet').then(tpl => spots.forEach(([x, z, ry]) => {
+    if (!tpl){ umbrella(x, z); return; }
+    const h = placeModel('loungerSet', tpl); h.position.set(x, 0, z); h.rotation.y = ry; scene.add(h);
+  }));
+}
+/* Carrinhos de limpeza das camareiras estacionados no corredor dos quartos */
+{ const spots = [[-10.6, 1.5, Math.PI/2], [-24.6, -1.5, -Math.PI/2]];
+  spots.forEach(([x, z]) => solid(x - .45, z - .4, x + .45, z + .4));
+  loadModel('cart').then(tpl => { if (!tpl) return; spots.forEach(([x, z, ry]) => { const h = placeModel('cart', tpl); h.position.set(x, 0, z); h.rotation.y = ry; scene.add(h); }); });
+}
+/* Recepção · poltronas SheenChair e luminária Iridescence Lamp (modelos glTF dos exemplos do three.js). O GLTFLoader
+   r128 não lê KHR_materials_sheen: o tecido vira MeshPhysicalMaterial com sheen para manter o brilho de veludo.
+   Em file:// ou se o arquivo falhar, ficam poltronas estofadas procedurais no mesmo lugar. */
+{ const holders = [[-5, 5.05, Math.PI], [-5, 1.15, 0]].map(([x, z, ry]) => {
+    const h = new THREE.Group(); h.position.set(x, 0, z); h.rotation.y = ry; scene.add(h);
+    const fb = new THREE.Group(); h.add(fb);
+    for (const sx of [-.3, .3]) for (const sz of [-.2, .2]) CY(.018, .014, .14, LOBBY_BRASS, sx, 0, sz, fb, 10);
+    SB(.74, .18, .62, .05, LOBBY_ACCENT, 0, .14, 0, fb, {puff:.15}); SB(.74, .46, .14, .06, LOBBY_ACCENT, 0, .3, -.25, fb, {puff:.2});
+    for (const s of [-1, 1]) SB(.12, .26, .6, .05, LOBBY_ACCENT, s*.33, .3, 0, fb);
+    h.userData.fb = fb; solid(x - .45, z - .38, x + .45, z + .38); return h;
+  });
+  loadModel('sheenChair').then(tpl => {
+    if (!tpl) return;
+    tpl.traverse(o => { const m = o.material;
+      if (o.isMesh && m && /fabric/i.test(m.name || '') && !m.isMeshPhysicalMaterial)
+        o.material = gpuTrack(new THREE.MeshPhysicalMaterial({map:m.map, normalMap:m.normalMap, roughnessMap:m.roughnessMap, color:m.color, roughness:m.roughness, metalness:0, sheen:new THREE.Color(0x8A5A3A)})); });
+    holders.forEach(h => { h.remove(h.userData.fb); h.add(placeModel('sheenChair', tpl)); });
+  });
+  loadModel('iriLamp').then(tpl => { if (!tpl) return; const h = placeModel('iriLamp', tpl); h.position.set(-2.85, 1.13, -3.55); scene.add(h); });
+}
+/* Esqueleto automático de pernas para personagens estáticos: acha a virilha (menor altura em que o meio do corpo tem
+   malha), separa as pernas pelo lado (z, o modelo olha para +x) e pesa os vértices entre bacia, coxa e canela com
+   faixas suaves. Mãos e mala ao lado ficam fora pela largura medida das pernas. Saia, vestido ou volume entre as
+   pernas: devolve null e o modelo anda só com o balanço do corpo */
+function legRigGeo(geo){
+  const p = geo.attributes.position; if (!p) return null;
+  geo.computeBoundingBox(); const bb = geo.boundingBox, H = bb.max.y - bb.min.y, y0 = bb.min.y, zc = (bb.min.z + bb.max.z)/2;
+  const bins = 52, top = .65, occ = new Uint8Array(bins);
+  for (let i = 0; i < p.count; i++){ const y = (p.getY(i) - y0)/H; if (y > .04 && y < top && Math.abs(p.getZ(i) - zc) < .012*H) occ[Math.min(bins - 1, Math.floor(y/top*bins))] = 1; }
+  let k = 0; while (k < bins && !occ[k]) k++;
+  const crotch = k/bins*top; if (crotch < .34 || crotch > .58) return null;
+  const yC = y0 + crotch*H, yH = yC + .035*H, yK = y0 + .27*H, band = .045*H, bandK = .035*H;
+  let half = 0; for (let i = 0; i < p.count; i++) if (Math.abs(p.getY(i) - yK) < .03*H) half = Math.max(half, Math.abs(p.getZ(i) - zc));
+  if (!half) return null;
+  const cut = half*1.3 + .01*H, sm = t => { t = Math.max(0, Math.min(1, t)); return t*t*(3 - 2*t); };
+  const hipS = [[0, 0, 0], [0, 0, 0]], kneeS = [[0, 0, 0], [0, 0, 0]];
+  const si = new Uint16Array(p.count*4), sw = new Float32Array(p.count*4);
+  for (let i = 0; i < p.count; i++){
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i), sd = z > zc ? 0 : 1, az = Math.abs(z - zc);
+    let w = sm((yC + band - y)/(2*band))*(1 - sm((az - cut)/(.03*H)));
+    if (y > yC) w *= sm(az/(.05*H));
+    const kw = sm((yK + bandK - y)/(2*bandK));
+    si.set([0, 1 + sd*2, 2 + sd*2, 0], i*4); sw.set([1 - w, w*(1 - kw), w*kw, 0], i*4);
+    if (az < cut && Math.abs(y - (yC - .04*H)) < .03*H){ const a = hipS[sd]; a[0] += x; a[1] += z; a[2]++; }
+    if (az < cut && Math.abs(y - yK) < .02*H){ const a = kneeS[sd]; a[0] += x; a[1] += z; a[2]++; }
+  }
+  if (!hipS[0][2] || !hipS[1][2] || !kneeS[0][2] || !kneeS[1][2]) return null;
+  geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(si, 4)); geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(sw, 4));
+  const avg = a => [a[0]/a[2], a[1]/a[2]];
+  return {yH, yK, hip:hipS.map(avg), knee:kneeS.map(avg)};
+}
+/* Troca a malha estática da cópia por uma SkinnedMesh com quadril e joelho de cada lado */
+function attachLegRig(holder, def){
+  const L = def.legRig; if (!L) return null;
+  let m = null; holder.traverse(o => { if (!m && o.isMesh && !o.isSkinnedMesh && o.geometry.attributes.skinWeight) m = o; });
+  if (!m) return null;
+  if (!def.skinMat) def.skinMat = [].concat(m.material).map(x => { const c = x.clone(); c.skinning = true; return c; });
+  const sm = new THREE.SkinnedMesh(m.geometry, Array.isArray(m.material) ? def.skinMat : def.skinMat[0]);
+  sm.position.copy(m.position); sm.quaternion.copy(m.quaternion); sm.scale.copy(m.scale);
+  sm.castShadow = sm.receiveShadow = true; sm.frustumCulled = false; sm.userData.shared = true;
+  const root = new THREE.Bone(), hips = [], knees = [];
+  for (let sd = 0; sd < 2; sd++){
+    const h = new THREE.Bone(); h.position.set(L.hip[sd][0], L.yH, L.hip[sd][1]); root.add(h);
+    const k = new THREE.Bone(); k.position.set(L.knee[sd][0] - L.hip[sd][0], L.yK - L.yH, L.knee[sd][1] - L.hip[sd][1]); h.add(k);
+    hips.push(h); knees.push(k);
+  }
+  sm.add(root); sm.updateMatrixWorld(true); sm.bind(new THREE.Skeleton([root, hips[0], knees[0], hips[1], knees[1]]));
+  m.parent.add(sm); m.parent.remove(m);
+  return {hips, knees};
+}
+function syncLegs(n){ const L = n.legRig; for (let i = 0; i < 2; i++){ L.hips[i].rotation.z = -n.legs[i].rotation.x*.75; L.knees[i].rotation.z = -(n.knee ? n.knee[i] : 0); } }
 /* Ossos do esqueleto Mixamo (o GLTFLoader tira o ':' do nome: 'mixamorig:Hips' vira 'mixamorigHips') */
 function makeRig(model){
   const find = name => { let b = null; model.traverse(o => { if (!b && o.isBone && o.name.replace(/^mixamorig:?/, '') === name) b = o; }); return b; };
   const R = {spine:find('Spine'), ul:[find('LeftUpLeg'), find('RightUpLeg')], ll:[find('LeftLeg'), find('RightLeg')],
-             ua:[find('LeftArm'), find('RightArm')], fa:[find('LeftForeArm'), find('RightForeArm')], hd:[find('LeftHand'), find('RightHand')], down:null};
+             ua:[find('LeftArm'), find('RightArm')], fa:[find('LeftForeArm'), find('RightForeArm')], hd:[find('LeftHand'), find('RightHand')], down:null, head:find('Head'), neck:find('Neck'), ft:[find('LeftFoot'), find('RightFoot')]};
   if (R.ul.includes(null) || R.ua.includes(null) || R.fa.includes(null) || R.hd.includes(null)) return null;
-  for (const b of [R.spine, ...R.ul, ...R.ll, ...R.ua, ...R.fa]) if (b) b.userData.bind = b.quaternion.clone();
+  for (const b of [R.spine, ...R.ul, ...R.ll, ...R.ua, ...R.fa, R.head, R.neck, ...R.ft]) if (b) b.userData.bind = b.quaternion.clone();
   return R;
 }
 const _rq = new THREE.Quaternion(), _rp = new THREE.Quaternion(), _rb = new THREE.Quaternion(), _ra = new THREE.Quaternion();
 const _rv1 = new THREE.Vector3(), _rv2 = new THREE.Vector3(), RIG_X = new THREE.Vector3(1, 0, 0);
+const _rh = new THREE.Quaternion(), _rh2 = new THREE.Quaternion(), RIG_Y = new THREE.Vector3(0, 1, 0);
 /* Gira um osso, a partir da pose de ligação, por uma rotação dada no espaço do corpo do NPC (frente +z, lado x).
    Funciona com qualquer eixo local do osso: a rotação é levada para o espaço do pai antes de aplicar. */
 function rotateBone(b, bodyInv, rel){
@@ -2561,19 +2762,80 @@ function syncRig(n){
     // o antebraço corrigido vira a nova pose de repouso, relativa ao braço: assim acompanha o balanço dele
     R.fa.forEach((f, i) => { rotateBone(f, _rb, align(f, R.hd[i], f, side[i] * .6, .18)); f.userData.bind = f.quaternion.clone(); });
   }
-  const lean = (n.legs[0].rotation.x - n.legs[1].rotation.x)*.04;
+  const lean = (n.legs[0].rotation.x - n.legs[1].rotation.x)*.1;   // tronco gira contra o quadril
   if (R.spine) rotateBone(R.spine, _rb, _ra.setFromAxisAngle(new THREE.Vector3(0, 1, 0), lean));
   for (let i = 0; i < 2; i++){
     const leg = n.legs[i].rotation.x, arm = n.arms[i].rotation.x;
     // o balanço do boneco (±0,55 rad) é largo para uma perna realista: a coxa usa 70% dele e o joelho dobra só para trás
     rotateBone(R.ul[i], _rb, _ra.setFromAxisAngle(RIG_X, leg*.7));
-    if (R.ll[i]) rotateBone(R.ll[i], _rb, _ra.setFromAxisAngle(RIG_X, Math.max(0, leg)*.85 + Math.abs(leg)*.1));
+    const kn = n.knee ? n.knee[i] : Math.max(0, leg)*.85 + Math.abs(leg)*.1;
+    if (R.ll[i]) rotateBone(R.ll[i], _rb, _ra.setFromAxisAngle(RIG_X, kn));
+    if (R.ft[i]) rotateBone(R.ft[i], _rb, _ra.setFromAxisAngle(RIG_X, -(leg*.7 + kn)*.55));   // pé quase paralelo ao chão
     rotateBone(R.ua[i], _rb, _ra.setFromAxisAngle(RIG_X, arm).multiply(R.down[i]));
     rotateBone(R.fa[i], _rb, _ra.setFromAxisAngle(RIG_X, Math.min(0, arm)*.5 - .12));
   }
+  // pescoço e cabeça seguem o olhar (n.lookYaw / n.lookPitch, no espaço do corpo)
+  if (R.head){ const y = n.lookYaw || 0, p = n.lookPitch || 0;
+    if (R.neck) rotateBone(R.neck, _rb, _rh.setFromAxisAngle(RIG_Y, y*.4).multiply(_rh2.setFromAxisAngle(RIG_X, -p*.4)));
+    rotateBone(R.head, _rb, _rh.setFromAxisAngle(RIG_Y, R.neck ? y*.6 : y).multiply(_rh2.setFromAxisAngle(RIG_X, -p*(R.neck ? .6 : 1)))); }
 }
+/* Olhar e cumprimentar: NPC parado e em pé a menos de 3,5 m do jogador vira o corpo (e, nos modelos com esqueleto,
+   o pescoço e a cabeça) para ele e volta quando ele se afasta. A equipe cumprimenta no primeiro contato; a
+   recepcionista faz reverência, acena, toca o sino e saúda conforme a hora do jogo e a fila do balcão */
+const SPEECH = (() => { const s = textSprite(.2, 1100, 72); s.visible = false; s.renderOrder = 10; s.material.depthTest = false; scene.add(s); return {s, who:null, t:0}; })();
+function say(n, text, secs = 3.4){ SPEECH.who = n; SPEECH.t = secs; SPEECH.s.userData.set(text, 'rgba(246,239,227,.96)', '#2A1B14'); SPEECH.s.visible = true; }
+const GREET = {
+  bartender:['{h}! Um drinque refrescante?', 'O pool bar está aberto, venha provar!'],
+  chef:['Bonjour! A cozinha está a todo vapor', 'Prove o prato do dia, está divino!'],
+  maid:['{h}! Deixando tudo impecável', 'Com licença, o quarto fica pronto em instantes'],
+  waiter:['{h}! Mesa para quantos?', 'Fique à vontade, já atendo'],
+  guest_vip:['Serviço impecável, parabéns', 'Espero que a suíte esteja pronta'],
+  guest_familia:['Que hotel lindo!', 'As crianças amaram a piscina'],
+  guest_executivo:['{h}. O Wi-Fi aqui é rápido?', 'Tenho uma reunião daqui a pouco'],
+  guest_mochileiro:['Que vista incrível!', 'Ótimo custo-benefício!'],
+};
+const greetHour = () => { const h = 8 + 14*Math.min(1, G.t/G.dayLen); return h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; };
+function greetLine(n){
+  if (n.kind === 'recep'){ const q = G.queue.length; return q > 1 ? `${greetHour()}! Já atendo você · ${q} hóspedes na fila` : `${greetHour()}! Bem-vindo ao Grand Resort. Check-in comigo, por favor`; }
+  const L = GREET[n.kind === 'guest' ? 'guest_' + ((n.profile && n.profile.type) || 'mochileiro') : n.kind];
+  return L ? pick(L).replace('{h}', greetHour()) : null;
+}
+const _lk = new THREE.Vector3();
+ANIM.push((dt, t) => {
+  const cp = camera.position, step = dt || 0, k = Math.min(1, (dt || .016)*6);
+  for (const n of NPCS){
+    let want = 0, pitch = 0;
+    const p = n.g.position, dx = cp.x - p.x, dz = cp.z - p.z, d = Math.hypot(dx, dz);
+    const near = d < 3.5 && !n.path.length && n.pose === 'stand' && (n.level || 0) === PLAYER_LEVEL;
+    if (near){ let rel = Math.atan2(dx, dz) - n.g.rotation.y; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
+      if (Math.abs(rel) < 2.5){ want = rel; pitch = Math.atan2(cp.y - p.y - 1.6, d); } }
+    if (near && !n.wasNear && d < 3.2){
+      const staff = n.kind !== 'guest', cool = n.greetAt === undefined || T - n.greetAt > (staff ? 30 : 60);
+      if (cool && (staff || Math.random() < .35)){
+        const line = greetLine(n);
+        if (line){ n.greetAt = T; if (n.kind === 'recep') recepTalk(line); else say(n, line);
+          if (n.kind === 'recep'){ n.bowT = 1.3; n.waveT = 1.8; tone(1318, .18, 'sine', .05); tone(1760, .3, 'sine', .04, .14); }
+          else if (staff) n.waveT = 1.2; }
+      }
+    }
+    n.wasNear = near;
+    n.body.rotation.y += (Math.max(-1.05, Math.min(1.05, want*(n.rig ? .55 : 1))) - n.body.rotation.y)*k;
+    if (n.rig){
+      const hy = Math.max(-.7, Math.min(.7, want - n.body.rotation.y));
+      n.lookYaw = (n.lookYaw || 0) + (hy - (n.lookYaw || 0))*k;
+      n.lookPitch = (n.lookPitch || 0) + (Math.max(-.35, Math.min(.35, pitch)) - (n.lookPitch || 0))*k;
+    }
+    if (n.bowT > 0){ n.bowT -= step; n.body.rotation.x = n.bowT > 0 ? .2*Math.sin(Math.PI*(1 - n.bowT/1.3)) : 0; }
+    if (n.waveT > 0){ n.waveT -= step; if (n.waveT > 0 && !RM.matches) n.arms[1].rotation.x = -2.5 + Math.sin(t*12)*.3; }
+  }
+  if (SPEECH.t > 0){
+    SPEECH.t -= step || .016; const w = SPEECH.who;
+    if (SPEECH.t <= 0 || !w || !NPCS.includes(w)){ SPEECH.s.visible = false; SPEECH.who = null; SPEECH.t = 0; }
+    else { w.g.getWorldPosition(_lk); SPEECH.s.position.set(_lk.x, _lk.y + (w.kind === 'chef' ? 2.95 : 2.55), _lk.z); }
+  }
+});
 // roda depois da simulação (que gira n.legs / n.arms) e também com o jogo pausado, para a pose não voltar ao T
-ANIM.push(() => { for (const n of NPCS) if (n.rig) syncRig(n); });
+ANIM.push(() => { for (const n of NPCS){ if (n.rig) syncRig(n); else if (n.legRig) syncLegs(n); } });
 
 /* ============================================================
    NPCs · grafo de caminhos, modelos geométricos, animação de andar
@@ -2646,7 +2908,7 @@ function makeNPCInner(kind, opts = {}){
   if (kind === 'bartender'){ const hat = mesh(new THREE.CylinderGeometry(.2,.24,.12,14), M(0xC99A52), 0, 1.92, 0, body); CY(.32,.32,.02, M(0xC99A52), 0, 1.86, 0, body, 18); }
   body.traverse(o => { if (o.isMesh) o.castShadow = true; });
   const tag = textSprite(.22); tag.position.y = kind === 'chef' ? 2.6 : 2.25; g.add(tag);
-  const n = {g, body, kind, legs, arms, tag, path:[], speed:kind === 'guest' ? 1.5 : 1.9, phase:Math.random()*6, state:'idle', timer:0, onTimer:null, at:null, onArrive:null, work:0, pose:'stand'};
+  const n = {g, body, kind, personaName:opts.name, legs, arms, tag, path:[], speed:kind === 'guest' ? 1.5 : 1.9, phase:Math.random()*6, state:'idle', timer:0, onTimer:null, at:null, onArrive:null, work:0, pose:'stand'};
   NPCS.push(n); dressNPC(n); return n;
 }
 function removeNPC(n){
@@ -2661,10 +2923,32 @@ function route(n, target, extra = [], cb = null){
 }
 const wait = (n, secs, cb) => { n.timer = secs; n.onTimer = cb; };
 function pose(n, p, where){
-  n.pose = p; n.body.position.set(0,0,0); n.g.rotation.set(0, n.g.rotation.y, 0);
+  n.pose = p; n.body.position.set(0,0,0); n.body.rotation.set(0,0,0); n.g.rotation.set(0, n.g.rotation.y, 0);
+  n.knee = p === 'sit' ? [1.1, 1.1] : [0, 0];   // sentado: canela na vertical
   n.legs.forEach(l => l.rotation.x = 0); n.arms.forEach(a => a.rotation.x = 0);
   if (p === 'sit'){ n.g.position.set(where.x, 0, where.z); n.g.rotation.y = Math.PI/2; n.body.position.y = -.36; n.legs.forEach(l => l.rotation.x = -Math.PI/2); n.arms.forEach(a => a.rotation.x = -.7); }
   if (p === 'lie'){ n.g.position.set(where.x, .44, where.z - .75); n.g.rotation.set(Math.PI/2 - .45, 0, 0); n.arms.forEach(a => a.rotation.x = .3); }
+  // modelo estático não dobra: sentado ou deitado volta o boneco articulado; em pé, o modelo
+  if (n.model && !n.rig && n.procParts){ const st = p === 'stand'; n.model.visible = st; n.procParts.forEach(c => { c.visible = !st; }); }
+}
+/* Ciclo de marcha: coxa à frente e atrás, joelho dobra no balanço (pico logo depois de a perna passar sob o corpo) e
+   estica no toque do calcanhar, braço oposto à perna, bacia sobe no apoio simples, peso passa de um pé para o outro,
+   tronco levemente inclinado. a = intensidade (0 parado … 1 andar normal). Cada toque do calcanhar faz um passo */
+function gait(n, a){
+  const ph = n.phase, A = .42*a + .06;
+  n.knee = n.knee || [0, 0];
+  for (let i = 0; i < 2; i++){
+    const q = ph + i*Math.PI, f = Math.sin(q);
+    n.legs[i].rotation.x = -f*A;                                                  // x positivo = perna para trás
+    n.knee[i] = (.95*Math.pow(Math.max(0, Math.cos(q + .35)), 1.6) + .06)*a;
+    n.arms[i].rotation.x = f*A*.85;
+  }
+  n.body.position.y = .028*a*(1 + Math.cos(2*ph))/2 - .012*a;
+  n.body.position.x = .022*a*Math.sin(ph);
+  n.body.rotation.z = .035*a*Math.sin(ph)*(n.model && !n.rig && !n.legRig ? 1.6 : 1);
+  if (!(n.bowT > 0)) n.body.rotation.x = .045*a;
+  const c = Math.floor((ph - Math.PI/2)/Math.PI);
+  if (c !== n.stepC){ n.stepC = c; npcStep(n); }
 }
 function stepNPC(n, dt){
   if (n.onTimer){ n.timer -= dt; if (n.timer <= 0){ const f = n.onTimer; n.onTimer = null; f(); } }
@@ -2675,18 +2959,21 @@ function stepNPC(n, dt){
       n.path.shift(); if (!n.path.length && n.onArrive){ const f = n.onArrive; n.onArrive = null; f(); }
     }
     else {
-      const s = Math.min(d, n.speed*dt); p.x += dx/d*s; p.z += dz/d*s;
-      const ty = Math.atan2(dx, dz); let dy = ty - n.g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); n.g.rotation.y += dy*Math.min(1, dt*10);
-      n.phase += dt*n.speed*4.2;
-      const sw = Math.sin(n.phase)*.55; n.legs[0].rotation.x = sw; n.legs[1].rotation.x = -sw; n.arms[0].rotation.x = -sw*.8; n.arms[1].rotation.x = sw*.8;
-      n.body.position.y = Math.abs(Math.cos(n.phase))*.04;
+      n.cur = Math.min(n.speed, (n.cur || 0) + dt*n.speed*2.2);                       // arranque suave
+      const s = Math.min(d, n.cur*dt); p.x += dx/d*s; p.z += dz/d*s;
+      const ty = Math.atan2(dx, dz); let dy = ty - n.g.rotation.y; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); n.g.rotation.y += dy*Math.min(1, dt*6);
+      n.phase += dt*(1.6 + n.cur*2.8);                                                // cadência cresce com a velocidade
+      gait(n, Math.min(1, n.cur/1.3));
     }
     // altura: dentro da escada segue a rampa; fora dela, o andar do nó atual (já atualizado acima, sem salto de um quadro)
     const lv = n.level || 0, sh = stairH(p.x, p.z, lv); if (sh !== null) n.level = stairLevel(p.x, p.z, lv, sh);
     p.y = sh !== null ? sh : FLOOR_Y[n.level || 0];
   } else if (n.pose === 'stand'){
-    n.legs.forEach(l => l.rotation.x *= .85); n.body.position.y = 0;
-    n.arms.forEach(a => a.rotation.x *= .85);
+    n.cur = 0;
+    n.legs.forEach(l => l.rotation.x *= .85); n.arms.forEach(a => a.rotation.x *= .85);
+    if (n.knee) for (let i = 0; i < 2; i++) n.knee[i] *= .85;
+    n.body.position.x *= .85; n.body.rotation.z *= .85; if (!(n.bowT > 0)) n.body.rotation.x *= .85;
+    n.body.position.y = Math.sin(T*1.7 + n.phase)*.004;                              // respiração
   }
 }
 
@@ -2727,7 +3014,7 @@ function spawnGuest(){
   // chega pela calçada, vindo de um dos lados, e entra pela frente do hotel
   const profile = makeProfile(), n = makeNPC('guest', PERSONAS[profile.persona]), side = Math.random() < .5 ? -1 : 1;
   n.g.position.set(side*(10 + Math.random()*6), 0, NODES.SW[1]); n.g.rotation.y = -side*Math.PI/2; n.at = 'SW';
-  n.state = 'queue'; n.inLine = false; n.profile = profile; decorateClient(n, profile.persona);
+  n.state = 'queue'; n.inLine = false; n.profile = profile; n.speed = {vip:1.1, familia:1.2, executivo:1.55, mochileiro:1.4}[profile.type] || 1.4; decorateClient(n, profile.persona);
   n.patience = 75 + (G.staff.recep ? [15,30,45][G.staffLv.recep - 1] : 0) + (G.upg.light ? 10 : 0);
   G.queue.push(n); G.guests.push(n);
   route(n, 'LS', [slotPos(G.queue.length - 1)], () => { n.inLine = true; n.g.rotation.y = Math.PI; });
@@ -2750,6 +3037,7 @@ function checkIn(n, room, byStaff){
   addMoney(rv.pay, `Check-in ${n.profile.name} · quarto ${room.id}`); addRep(rv.rep);
   toast(`${byStaff ? 'Recepção: ' : ''}${n.profile.name} no quarto ${room.id} · ${rv.txt} · ${rv.pay >= 0 ? '+' : '−'}${fmt(Math.abs(rv.pay))}`, rv.rep >= 0 ? 'good' : 'bad');
   if (!byStaff) SFX.coin();
+  { const nm = n.profile.name.split(' ')[0]; recepTalk(pick([`${nm}, quarto ${room.id}. Aqui está sua chave, boa estadia!`, `Prontinho, ${nm}! Quarto ${room.id}. Aproveite o resort!`, `Check-in feito! Quarto ${room.id}, o café é servido no restaurante`])); }
   toggleDoor(room, true);
   route(n, roomNode(room), [], () => { n.state = 'room'; toggleDoor(room, false); wait(n, 22, () => leaveRoom(n)); });
   return true;
@@ -2760,7 +3048,7 @@ function autoCheckIn(){
   const room = bestRoomFor(n.profile);
   return room && reviewOf(n.profile, room).q !== 'ruim' ? checkIn(n, room, true) : false;
 }
-function ringBell(){ bellShake = .6; SFX.bell(); openFicha(G.queue[0]); }
+function ringBell(){ bellShake = .6; SFX.bell(); recepTalk('Próximo, por favor!'); openFicha(G.queue[0]); }
 function leaveRoom(n){
   toggleDoor(n.room, true); n.state = 'toFood';
   const t = TABLES.find(t => !t.guest);
@@ -2786,7 +3074,7 @@ function goPool(n){
 function checkout(n){
   n.state = 'checkout'; const room = n.room;
   room.guest = null; dirtyRoom(room); addRep(1);
-  toast(`Checkout do quarto ${room.id} · o quarto precisa de limpeza`);
+  toast(`Checkout do quarto ${room.id} · o quarto precisa de limpeza`); recepTalk(pick(['Obrigada pela estadia! Volte sempre ao Grand Resort', 'Foi um prazer receber você. Boa viagem!']));
   leaveHotel(n);
 }
 const GUEST_TAG = {waitOrder:'Quer fazer o pedido', toGames:'Indo à sala de jogos', games:'Jogando sinuca', toRoom:'Indo para o quarto', room:'Descansando', toFood:'Com fome', waitFood:'Esperando o prato', eating:'Comendo', toPool:'Indo à piscina', relax:'Relaxando · drinks', checkout:'Checkout', leaving:'Desistiu de esperar',
@@ -2799,7 +3087,7 @@ function guestTick(n, dt){
     n.tag.userData.set(`Check-in · ${p}s`, p < 20 ? 'rgba(232,106,90,.95)' : 'rgba(216,166,74,.95)', '#2A1B14');
     if (n.patience <= 0){
       G.queue.splice(G.queue.indexOf(n), 1); updateQueue(); n.inLine = false; unregister(n.g); addRep(-4); n.state = 'leaving';
-      toast('Um hóspede desistiu de esperar na fila · reputação caiu', 'bad');
+      toast('Um hóspede desistiu de esperar na fila · reputação caiu', 'bad'); recepTalk('Peço desculpas pela espera. Volte sempre!');
       leaveHotel(n);
     }
     return;
@@ -3141,7 +3429,7 @@ function applyUpgrade(k){
 /* ============================================================
    COZINHA INTERATIVA · ingredientes, bancada, panela, empratamento
    ============================================================ */
-SFX.chop = () => { tone(260,.05,'square',.08); tone(140,.09,'sine',.14,.02); };
+
 const HIT = new THREE.MeshBasicMaterial({transparent:true, opacity:0, depthWrite:false});
 const INGR = {
   pao:{name:'Pão brioche', c:0xD9A35B, s:'bun'}, carne:{name:'Carne moída', c:0x9A3B2E, s:'box'}, queijo:{name:'Queijo cheddar', c:0xF2B630, s:'wedge'},
@@ -4544,6 +4832,8 @@ ANIM.push(dt => { if (HX_LIVE) HX_LIVE.update(dt, camera); });
     for (let k = 0; k < 6; k++) SPH(.07, M(BUSH_FLOWERS[k % BUSH_FLOWERS.length], {roughness:.6}), x - .85 + k*.34, .92, 12.4 + (k % 2 ? .18 : -.18), scene, 6);
     ground0(solid(x - 1.15, 11.9, x + 1.15, 12.9));
   }
+  if (!BUSHES.planters){ BUSHES.planters = true;
+    loadModel('bush').then(tpl => { if (!tpl) return; for (const x of [-25, -20, -15, -10, 10, 15, 20, 25]) for (const dx of [-.6, .6]){ const h = placeModel('bush', tpl, .55); h.position.set(x + dx, .82, 12.4); h.rotation.y = x + dx; scene.add(h); } }); }
   // postes de entrada com lanterna
   const lantern = GFX.glow(new THREE.MeshStandardMaterial({color:0xFFF1D6, emissive:0xFFD9A0, roughness:.3}), 'emissiveIntensity', .3, 3);
   for (const x of [-6.8, 6.8]){
@@ -6097,6 +6387,7 @@ const KDOOR = (() => {
   ANIM.push((dt) => {
     const cam = camera.position; let near = PLAYER_LEVEL === 0 && Math.hypot(cam.x - 20, cam.z - 6) < 2.4;
     if (!near) for (const n of NPCS){ const p = n.g.position; if (p.y < 1 && Math.hypot(p.x - 20, p.z - 6) < 2){ near = true; break; } }
+    if (near !== !!d.wasNear){ d.wasNear = near; doorSwing(d.pos); }
     d.open += ((near ? 1 : 0) - d.open)*Math.min(1, (dt || 1/60)*6);
     for (const l of d.leaves) l.pivot.rotation.y = l.s*d.open*1.35;
   });
@@ -6107,6 +6398,7 @@ ANIM.push((dt) => {
   for (const d of AUTO_DOORS){
     let near = PLAYER_LEVEL === d.floor && Math.hypot(cam.x - d.pos.x, cam.z - d.pos.z) < 2.6;
     if (!near) for (const n of NPCS){ const p = n.g.position; if (p.y < 1 && Math.hypot(p.x - d.pos.x, p.z - d.pos.z) < 2.2){ near = true; break; } }
+    if (near !== !!d.wasNear){ d.wasNear = near; doorSlide(d.pos, near); }
     d.open += ((near ? 1 : 0) - d.open)*step;
     for (const l of d.leaves) l.position.x = l.userData.side*(d.w/4 + d.open*d.w/2*.98);
   }
@@ -6122,18 +6414,59 @@ const CARRY_HUD = (() => { const d = document.createElement('div'); d.hidden = t
   d.style.cssText = 'position:fixed;left:16px;bottom:96px;z-index:25;max-width:calc(100vw - 32px);background:rgba(30,20,14,.88);border:1px solid #D8A64A;border-radius:12px;padding:8px 12px;color:#F6EFE3;font:600 13px/1.4 Outfit,sans-serif';
   document.body.appendChild(d); return d; })();
 function carryHud(){ CARRY_HUD.hidden = !CARRY; if (CARRY) CARRY_HUD.textContent = CARRY.kind === 'plate' ? `Levando: ${CARRY.o.dish} → mesa ${CARRY.o.table.i + 1}` : `Levando: ${CARRY.drink.name} → ${CARRY.order ? 'espreguiçadeira ' + (CARRY.order.lounger.i + 1) : 'hóspede que pediu'}`; }
-// prato na mão do jogador (preso à câmera)
+// prato ou drinque na mão do jogador (preso à câmera)
 const HAND = (() => { const g = new THREE.Group(); g.position.set(.28, -.32, -.6); camera.add(g); g.visible = false;
-  CY(.13, .1, .015, MAT.white, 0, 0, 0, g, 20); const food = SPH(.06, M(0xD99A4A), 0, .04, 0, g, 12); food.scale.y = .6; const glass = CY(.035, .03, .13, M(0xF27BA8, {transparent:true, opacity:.8}), .0, 0, 0, g, 12); g.userData = {food, glass}; return g; })();
-function setCarry(c){ CARRY = c; HAND.visible = !!c; if (c){ HAND.children[0].visible = HAND.userData.food.visible = c.kind === 'plate'; HAND.userData.glass.visible = c.kind === 'drink'; if (c.kind === 'drink') HAND.userData.glass.material.color.setHex(c.drink.color); } carryHud(); }
+  CY(.13, .1, .015, MAT.white, 0, 0, 0, g, 20); const food = SPH(.06, M(0xD99A4A), 0, .04, 0, g, 12); food.scale.y = .6;
+  const glass = new THREE.Group(); glass.position.y = -.05; g.add(glass); g.userData = {food, glass}; return g; })();
+function setCarry(c){
+  CARRY = c; HAND.visible = !!c; const gl = HAND.userData.glass;
+  if (c){ HAND.children[0].visible = HAND.userData.food.visible = c.kind === 'plate'; gl.visible = c.kind === 'drink';
+    while (gl.children.length) gl.remove(gl.children[0]);
+    if (c.kind === 'drink' && c.mix) gl.add(drinkModel(c.mix)); }
+  carryHud();
+}
 const dishName = () => pick(RECIPES).name;
-/* Anotar o pedido: o prato vai para a fila da cozinha */
+/* Comandas: cada pedido vira uma ficha numerada com mesa, hóspede, prato, observações, alergia, prioridade e prazo.
+   A fila do fogão (STOVE.queue) segue a prioridade (VIP primeiro) e, dentro dela, a ordem de chegada; o prato que
+   já está no fogo (posição 0) nunca perde a vez. */
+const KDS = {seq:0, open:[], stats:{served:0, onTime:0, total:0}};
+const DISH_MODS = {
+  burger:['Sem cebola', 'Sem tomate', 'Queijo extra', 'Pão sem gergelim'],
+  pizza:['Massa bem assada', 'Sem manjericão', 'Mussarela extra', 'Cortar em 8'],
+  salmao:['Molho à parte', 'Sem manteiga', 'Batata extra', 'Pele crocante'],
+  risoto:['Al dente', 'Sem queijo', 'Camarão extra', 'Pouco sal'],
+};
+const ALLERGIES = ['Alergia a lactose', 'Alergia a glúten', 'Alergia a frutos do mar', 'Vegetariano'];
+const ticketNo = o => '#' + String(o.no).padStart(4, '0');
+function newTicket(g){
+  const unlocked = RECIPES.filter(r => r.unlock <= (G.friend || 0)), r = pick(unlocked.length ? unlocked : RECIPES);
+  const vip = !!(g.profile && g.profile.type === 'vip'), pool = (DISH_MODS[r.id] || []).slice(), mods = [];
+  if (r.id === 'burger') mods.push(pick(['Ao ponto', 'Mal passado', 'Bem passado']));
+  let k = Math.random() < .55 ? (Math.random() < .35 ? 2 : 1) : 0;
+  while (k-- > 0 && pool.length) mods.push(pool.splice(Math.floor(Math.random()*pool.length), 1)[0]);
+  let allergy = Math.random() < .15 ? pick(ALLERGIES) : null;
+  if (allergy === 'Alergia a frutos do mar' && (r.id === 'risoto' || r.id === 'salmao')) allergy = null;
+  if (allergy === 'Vegetariano' && r.id !== 'pizza') allergy = null;
+  return {no:++KDS.seq, guest:g, table:g.table, dish:r.name, recipe:r.id, mods, allergy, vip, age:0, due:vip ? 75 : 100};
+}
+function queueTicket(o){
+  const q = STOVE.queue; let i = q.length;
+  if (o.vip){ const k = q.findIndex((x, j) => j > 0 && !x.vip); if (k > 0) i = k; }
+  q.splice(i, 0, o);
+}
+function rushTicket(o){
+  const q = STOVE.queue, i = q.indexOf(o);
+  if (i > 1){ q.splice(i, 1); q.splice(1, 0, o); KTICKETS.dirty = true; toast(`Comanda ${ticketNo(o)} priorizada · é a próxima do fogão`, 'good'); }
+}
+/* Anotar o pedido: a comanda vai para o trilho da cozinha */
 function takeOrder(g, byWaiter){
   if (!g || g.state !== 'waitOrder') return;
-  g.order = dishName(); g.state = 'waitFood'; g.served = false; g.taker = null;
-  STOVE.queue.push({guest:g, table:g.table, dish:g.order}); KTICKETS.dirty = true;
+  const o = newTicket(g);
+  g.order = o.dish; g.ticket = o; g.state = 'waitFood'; g.served = false; g.taker = null;
+  KDS.open.push(o); queueTicket(o); KTICKETS.dirty = true;
   tone(880, .06, 'triangle', .08); tone(1320, .08, 'triangle', .06, .06);
-  toast(`${byWaiter ? 'Garçom: ' : ''}mesa ${g.table.i + 1} pediu ${g.order} · comanda na cozinha`, 'good');
+  toast(`${byWaiter ? 'Garçom · ' : ''}Comanda ${ticketNo(o)} · Mesa ${o.table.i + 1} · ${o.dish}${o.vip ? ' · VIP' : ''}${o.mods.length ? ' · ' + o.mods.join(', ') : ''}${o.allergy ? ' · ATENÇÃO: ' + o.allergy : ''}`, 'good');
+  if (KDS.seq === 1) toast('Dica: aperte C para abrir o painel de comandas da cozinha', '');
 }
 function orderWaitTick(n, dt){
   n.orderWait -= dt;
@@ -6155,6 +6488,8 @@ function serveDish(o, byWaiter){
   KTICKETS.dirty = true;
   if (!o.guest || o.guest.state !== 'waitFood' || o.guest.table !== o.table){ if (!byWaiter) toast('O hóspede dessa mesa já foi embora', 'bad'); return; }
   o.table.plate.visible = true; o.guest.served = true;
+  if (o.no){ const k = KDS.open.indexOf(o); if (k >= 0) KDS.open.splice(k, 1); KDS.stats.served++; KDS.stats.total += o.age;
+    if (o.age <= o.due){ KDS.stats.onTime++; addRep(1); if (!byWaiter) toast(`Comanda ${ticketNo(o)} saiu no prazo · +reputação`, 'good'); } }
   if (!byWaiter){ SFX.coin(); addRep(1); toast(`${o.dish} servido na mesa ${o.table.i + 1}`, 'good'); }
 }
 // pratos prontos no passe (lado do salão) e alvo de interação
@@ -6172,30 +6507,83 @@ interact(PASS.g, {
   action:() => { const o = READY.find(o => !o.carrier); if (!o) return; o.carrier = 'player'; setCarry({kind:'plate', o}); tone(700, .06, 'triangle', .07); }});
 /* Trilho de comandas no passe: mostra cada pedido (na fila, no fogo, pronto) */
 const KTICKETS = (() => {
-  const c = document.createElement('canvas'); c.width = 1024; c.height = 256; const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
+  const c = document.createElement('canvas'); c.width = 1560; c.height = 400; const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding;
   const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, .6), new THREE.MeshBasicMaterial({map:t, side:THREE.DoubleSide})); m.position.set(20.05, 2.2, -2); m.rotation.y = -Math.PI/2; scene.add(m);
   B(.04, .04, 2.5, MAT.gold, 20.05, 2.52, -2, scene, false);
   return {c, t, dirty:true, timer:0};
 })();
+function ticketState(o){
+  if (READY.includes(o)) return {st:'PRONTO NO PASSE', col:'#2BB3B1'};
+  const i = STOVE.queue.indexOf(o);
+  if (i === 0) return {st:`NO FOGO ${Math.min(99, Math.round(STOVE.progress/STOVE.cookTime*100))}%`, col:'#F2A93B'};
+  return {st:i === 1 ? 'PRÓXIMO' : 'NA FILA', col:'#6E8FB8'};
+}
+const kdsTime = s => `${Math.floor(s/60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+function wrapText(g, s, x, y, maxW, lh){
+  let line = '';
+  for (const wd of String(s).split(' ')){ if (line && g.measureText(line + wd).width > maxW){ g.fillText(line.trim(), x, y); y += lh; line = ''; } line += wd + ' '; }
+  if (line.trim()) g.fillText(line.trim(), x, y);
+  return y + lh;
+}
+/* Monitor de comandas (KDS) no passe: cartão por pedido com número, mesa, tempo, prato, observações e alergia,
+   cor pelo andamento e barra de prazo; pisca em vermelho quando atrasa */
 function drawTickets(){
-  const g = KTICKETS.c.getContext('2d'), w = 1024, h = 256;
-  g.fillStyle = '#1B1F1D'; g.fillRect(0, 0, w, h);
-  g.fillStyle = '#D8A64A'; g.font = '600 30px Outfit, sans-serif'; g.textAlign = 'left'; g.fillText('COMANDAS', 16, 34);
-  const list = READY.map(o => ({o, st:'PRONTO', col:'#7FD8C8'})).concat(STOVE.queue.map((o, i) => ({o, st:i === 0 ? `NO FOGO ${Math.round(STOVE.progress/STOVE.cookTime*100)}%` : 'NA FILA', col:i === 0 ? '#F2A93B' : '#CDBFA8'})));
-  if (!list.length){ g.fillStyle = '#7A8A82'; g.font = '500 30px Outfit, sans-serif'; g.fillText('sem pedidos · os hóspedes chamam nas mesas', 16, 140); }
-  list.slice(0, 6).forEach(({o, st, col}, i) => {
-    const x = 12 + i*168, y = 52;
-    g.fillStyle = '#F6F1E4'; g.fillRect(x, y, 156, 190); g.fillStyle = col; g.fillRect(x, y, 156, 30);
-    g.fillStyle = '#1B1F1D'; g.font = '700 20px Outfit, sans-serif'; g.fillText(st, x + 8, y + 22);
-    g.font = '700 30px Gloock, Georgia, serif'; g.fillText(`Mesa ${o.table.i + 1}`, x + 8, y + 70);
-    g.font = '500 20px Outfit, sans-serif'; const words = String(o.dish || 'Prato do dia').split(' '); let line = '', ly = y + 104;
-    for (const wd of words){ if (g.measureText(line + wd).width > 140){ g.fillText(line, x + 8, ly); ly += 24; line = ''; } line += wd + ' '; } g.fillText(line, x + 8, ly);
+  const g = KTICKETS.c.getContext('2d'), w = KTICKETS.c.width, h = KTICKETS.c.height, blink = Math.floor(performance.now()/400) % 2;
+  g.fillStyle = '#121615'; g.fillRect(0, 0, w, h);
+  g.textAlign = 'left'; g.fillStyle = '#D8A64A'; g.font = '700 30px Outfit, sans-serif'; g.fillText('COZINHA · COMANDAS', 18, 38);
+  const s = KDS.stats;
+  g.textAlign = 'right'; g.fillStyle = '#9FB3AA'; g.font = '500 24px Outfit, sans-serif';
+  g.fillText(`abertas ${KDS.open.length} · servidas ${s.served} · no prazo ${s.served ? Math.round(s.onTime/s.served*100) : 100}% · média ${kdsTime(s.served ? s.total/s.served : 0)}`, w - 18, 38);
+  g.textAlign = 'left';
+  const list = READY.filter(o => o.no).concat(STOVE.queue.filter(o => o.no));
+  if (!list.length){ g.fillStyle = '#6F7F78'; g.font = '500 34px Outfit, sans-serif'; g.fillText('Sem comandas abertas · os hóspedes chamam nas mesas', 18, h/2 + 24); }
+  const cw = 246, gap = 10;
+  list.slice(0, 6).forEach((o, i) => {
+    const x = 12 + i*(cw + gap), y = 56, ch = h - y - 12, {st, col} = ticketState(o), late = o.age > o.due, warn = o.age > o.due*.6;
+    g.fillStyle = '#F6F1E4'; g.fillRect(x, y, cw, ch);
+    g.fillStyle = late ? (blink ? '#E84A3A' : '#8A1F18') : col; g.fillRect(x, y, cw, 34);
+    g.fillStyle = '#FFFFFF'; g.font = '700 19px Outfit, sans-serif'; g.fillText(late ? 'ATRASADO · ' + st : st, x + 10, y + 24);
+    g.fillStyle = '#1B1F1D'; g.font = '700 34px Gloock, Georgia, serif'; g.fillText(`Mesa ${o.table.i + 1}`, x + 10, y + 74);
+    g.textAlign = 'right'; g.font = '600 22px Outfit, sans-serif'; g.fillStyle = '#5A6660'; g.fillText(ticketNo(o), x + cw - 10, y + 62);
+    g.fillStyle = late ? '#C2453A' : warn ? '#C27A1A' : '#2E7A4E'; g.font = '700 26px Outfit, sans-serif'; g.fillText(kdsTime(o.age), x + cw - 10, y + 94); g.textAlign = 'left';
+    if (o.vip){ g.fillStyle = '#D8A64A'; g.fillRect(x + 10, y + 86, 52, 24); g.fillStyle = '#1B1F1D'; g.font = '700 16px Outfit, sans-serif'; g.fillText('VIP', x + 20, y + 104); }
+    g.fillStyle = '#1B1F1D'; g.font = '700 24px Outfit, sans-serif';
+    let ly = wrapText(g, o.dish, x + 10, y + 140, cw - 20, 28);
+    g.font = '500 20px Outfit, sans-serif'; g.fillStyle = '#3A4440';
+    for (const m of o.mods){ if (ly > y + ch - 44) break; ly = wrapText(g, '· ' + m, x + 10, ly + 2, cw - 20, 24); }
+    if (o.allergy && ly < y + ch - 18){ g.fillStyle = '#C2453A'; g.font = '700 19px Outfit, sans-serif'; wrapText(g, '! ' + o.allergy.toUpperCase(), x + 10, ly + 6, cw - 20, 22); }
+    const k = Math.min(1, o.age/o.due); g.fillStyle = '#E2DCCD'; g.fillRect(x, y + ch - 8, cw, 8); g.fillStyle = late ? '#E84A3A' : warn ? '#F2A93B' : '#2BB3B1'; g.fillRect(x, y + ch - 8, cw*k, 8);
   });
+  if (list.length > 6){ g.fillStyle = '#D8A64A'; g.font = '600 22px Outfit, sans-serif'; g.textAlign = 'right'; g.fillText(`+${list.length - 6} na fila`, w - 18, h - 20); g.textAlign = 'left'; }
   KTICKETS.t.needsUpdate = true;
 }
+/* Painel de comandas no HUD (tecla C): todas as fichas abertas, com tempo, status e botão para priorizar */
+const KDS_EL = (() => { const d = document.createElement('div'); d.hidden = true; d.id = 'kdsPanel';
+  d.style.cssText = 'position:fixed;right:16px;top:84px;z-index:24;width:min(340px,calc(100vw - 32px));max-height:calc(100vh - 200px);overflow:auto;background:rgba(30,20,14,.92);border:1px solid #D8A64A;border-radius:12px;padding:10px 12px;color:#F6EFE3;font:500 13px/1.4 Outfit,sans-serif';
+  document.body.appendChild(d); return d; })();
+function renderKdsPanel(){
+  if (KDS_EL.hidden) return;
+  const s = KDS.stats;
+  const rows = KDS.open.slice().sort((a, b) => (b.vip - a.vip) || (b.age/b.due - a.age/a.due)).map(o => {
+    const {st, col} = ticketState(o), late = o.age > o.due, q = STOVE.queue.indexOf(o);
+    return `<div style="border-left:4px solid ${late ? '#E84A3A' : col};background:rgba(255,255,255,.05);border-radius:8px;padding:6px 8px;margin-top:6px">
+      <div style="display:flex;justify-content:space-between;gap:8px"><b>${ticketNo(o)} · Mesa ${o.table.i + 1}${o.vip ? ' <span style="color:#D8A64A">VIP</span>' : ''}</b><span style="color:${late ? '#F29A8E' : '#CDBFA8'};font-variant-numeric:tabular-nums">${kdsTime(o.age)} / ${kdsTime(o.due)}</span></div>
+      <div>${o.dish}${o.guest && o.guest.profile ? ` <small style="color:#CDBFA8">· ${o.guest.profile.name}</small>` : ''}</div>
+      ${o.mods.length ? `<small style="color:#CDBFA8">${o.mods.join(' · ')}</small><br>` : ''}${o.allergy ? `<small style="color:#F29A8E;font-weight:700">${o.allergy}</small><br>` : ''}
+      <small style="color:${late ? '#F29A8E' : col}">${late ? 'ATRASADO · ' : ''}${st}</small>${q > 1 ? ` <button data-rush="${o.no}" style="float:right;padding:2px 8px;border-radius:6px;border:1px solid #D8A64A;color:#F6EFE3;font-size:11.5px">Priorizar</button>` : ''}</div>`;
+  }).join('');
+  KDS_EL.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><b style="font:400 17px Gloock,Georgia,serif;color:#D8A64A">Comandas da cozinha</b><kbd>C</kbd></div>
+    <small style="color:#CDBFA8">Abertas ${KDS.open.length} · servidas ${s.served} · no prazo ${s.served ? Math.round(s.onTime/s.served*100) : 100}%</small>${rows || '<p style="color:#CDBFA8;margin:8px 0 0">Nenhuma comanda aberta.</p>'}`;
+  KDS_EL.querySelectorAll('[data-rush]').forEach(b => b.onclick = () => { const o = KDS.open.find(o => o.no === +b.dataset.rush); if (o) rushTicket(o); renderKdsPanel(); });
+}
+addEventListener('keydown', e => { if (e.code === 'KeyC' && !e.repeat && !pcOpen && !e.ctrlKey && !e.metaKey){ KDS_EL.hidden = !KDS_EL.hidden; renderKdsPanel(); } });
 ANIM.push((dt) => {
+  for (const o of KDS.open) o.age += dt;
+  // comanda de hóspede que foi embora sai do trilho (o prato que já está no fogo termina e é descartado no passe)
+  for (let i = KDS.open.length - 1; i >= 0; i--){ const o = KDS.open[i];
+    if (!o.guest || o.guest.state !== 'waitFood' || o.guest.table !== o.table){ KDS.open.splice(i, 1); const q = STOVE.queue.indexOf(o); if (q > 0) STOVE.queue.splice(q, 1); const r = READY.indexOf(o); if (r >= 0 && !o.carrier) READY.splice(r, 1); KTICKETS.dirty = true; } }
   KTICKETS.timer -= dt || .016;
-  if (KTICKETS.dirty || (STOVE.queue.length && KTICKETS.timer <= 0)){ KTICKETS.dirty = false; KTICKETS.timer = .5; drawTickets(); }
+  if (KTICKETS.dirty || ((KDS.open.length || STOVE.queue.length) && KTICKETS.timer <= 0)){ KTICKETS.dirty = false; KTICKETS.timer = .5; drawTickets(); renderKdsPanel(); }
   const show = READY.filter(o => !o.carrier); PASS.slots.forEach((s, k) => { s.visible = k < show.length; });
   if (CARRY && CARRY.kind === 'plate' && (!CARRY.o.guest || CARRY.o.guest.state !== 'waitFood')){ toast('O hóspede saiu antes de você servir', 'bad'); const i = READY.indexOf(CARRY.o); if (i >= 0) READY.splice(i, 1); setCarry(null); KTICKETS.dirty = true; }
 });
@@ -6248,131 +6636,389 @@ function waiterTick(n, dt){
    sozinho os pedidos que esperam demais, e sem gorjeta.
    ============================================================ */
 const BAR_ING = {
-  cachaca:'Cachaça', rum:'Rum branco', tequila:'Tequila', vodka:'Vodka', gim:'Gim', licorlaranja:'Licor de laranja',
-  limao:'Limão', hortela:'Hortelã', acucar:'Açúcar', abacaxi:'Abacaxi', coco:'Leite de coco', maracuja:'Maracujá',
-  morango:'Morango', laranja:'Suco de laranja', groselha:'Xarope de groselha', gas:'Água com gás', tonica:'Água tônica', gelo:'Gelo',
+  cachaca:{n:'Cachaça', c:0xF4F1E2, alc:1, w:1}, rum:{n:'Rum branco', c:0xF4F0E4, alc:1, w:1}, tequila:{n:'Tequila', c:0xF4EFD8, alc:1, w:1},
+  vodka:{n:'Vodka', c:0xF6F6F6, alc:1, w:1}, gim:{n:'Gim', c:0xF0F6F8, alc:1, w:1}, licorlaranja:{n:'Licor de laranja', c:0xF2A33A, alc:1, w:2},
+  aperol:{n:'Aperol', c:0xF26A1B, alc:1, w:4}, espumante:{n:'Espumante', c:0xF4E6A2, alc:1, w:2},
+  limao:{n:'Limão', c:0xD8E87A, w:1}, hortela:{n:'Hortelã', c:0x5DBB63, w:1}, abacaxi:{n:'Suco de abacaxi', c:0xF6D860, w:3}, maracuja:{n:'Maracujá', c:0xF2C230, w:3},
+  morango:{n:'Morango', c:0xE8455A, w:4}, laranja:{n:'Suco de laranja', c:0xF7A030, w:3}, cranberry:{n:'Suco de cranberry', c:0xC2203F, w:4}, aguacoco:{n:'Água de coco', c:0xEEF2E6, w:2},
+  acucar:{n:'Açúcar', c:0xFFFFFF, w:0}, coco:{n:'Leite de coco', c:0xF8F4EA, w:3, cream:1}, leitecond:{n:'Leite condensado', c:0xF6EFD8, w:2, cream:1},
+  groselha:{n:'Xarope de groselha', c:0xC8102E, w:5}, gas:{n:'Água com gás', c:0xEAF6FA, w:1}, tonica:{n:'Água tônica', c:0xEAF6FA, w:1},
 };
-const BAR_ING_GROUPS = [['Destilados', ['cachaca','rum','tequila','vodka','gim','licorlaranja']], ['Frutas e ervas', ['limao','hortela','abacaxi','maracuja','morango','laranja']], ['Complementos', ['acucar','coco','groselha','gas','tonica','gelo']]];
-const BAR_METHOD = {macerar:'Macerar no copo', agitar:'Coqueteleira', bater:'Liquidificador', montar:'Montar no copo'};
-const BAR_GLASSES = {baixo:'Copo baixo', long:'Copo long drink', margarita:'Taça margarita', hurricane:'Taça hurricane', balao:'Taça balão'};
-const BAR_GARNISH = {nenhum:'Sem guarnição', limao:'Rodela de limão', hortela:'Ramo de hortelã', abacaxi:'Fatia de abacaxi', sal:'Sal na borda', morango:'Morango', guarda:'Guarda-chuvinha'};
+const BAR_ING_GROUPS = [['Destilados e licores', ['cachaca','rum','tequila','vodka','gim','licorlaranja','aperol','espumante']], ['Frutas, sucos e ervas', ['limao','hortela','abacaxi','maracuja','morango','laranja','cranberry','aguacoco']], ['Complementos', ['acucar','coco','leitecond','groselha','gas','tonica']]];
+const BAR_DOSE = {30:'Simples · 30 ml', 50:'Padrão · 50 ml', 60:'Dupla · 60 ml'};
+const BAR_ICE = {cubos:'Cubos', picado:'Gelo picado', esfera:'Esfera grande', sem:'Sem gelo'};
+const BAR_METHOD = {macerar:'Macerar no copo', agitar:'Coqueteleira', mexer:'Mexer no mixing glass', bater:'Liquidificador', montar:'Montar no copo'};
+/* Copos: perfil real (raio, altura) em metros para o LatheGeometry; b = início do bojo, f = altura do líquido */
+const BAR_GLASSES = {
+  rocks:{n:'Copo baixo', p:[[0,0],[.043,0],[.044,.006],[.046,.095]], b:0, f:.7},
+  highball:{n:'Copo highball', p:[[0,0],[.036,0],[.037,.006],[.039,.15]], b:0, f:.82},
+  collins:{n:'Copo collins', p:[[0,0],[.031,0],[.032,.006],[.033,.175]], b:0, f:.82},
+  margarita:{n:'Taça margarita', p:[[0,0],[.04,0],[.04,.005],[.006,.012],[.005,.085],[.02,.095],[.03,.108],[.068,.135],[.074,.145]], b:4, f:.75},
+  hurricane:{n:'Taça hurricane', p:[[0,0],[.035,0],[.035,.005],[.006,.012],[.006,.035],[.028,.055],[.04,.1],[.03,.15],[.034,.18],[.04,.205]], b:4, f:.85},
+  balao:{n:'Taça balão', p:[[0,0],[.04,0],[.04,.005],[.004,.012],[.004,.085],[.042,.105],[.056,.145],[.052,.185],[.046,.205]], b:4, f:.6},
+  coupe:{n:'Taça coupe', p:[[0,0],[.037,0],[.037,.005],[.004,.012],[.004,.1],[.04,.108],[.058,.125],[.062,.135]], b:4, f:.8},
+  martini:{n:'Taça martini', p:[[0,0],[.037,0],[.037,.005],[.004,.012],[.004,.1],[.066,.168]], b:4, f:.8},
+  tiki:{n:'Caneca tiki', p:[[0,0],[.038,0],[.04,.006],[.043,.06],[.039,.1],[.044,.155]], b:0, f:.85, mat:'tiki'},
+  coco:{n:'Coco natural', p:[[0,0],[.035,.004],[.062,.03],[.074,.07],[.068,.105],[.05,.125]], b:0, f:.9, mat:'coco'},
+  abacaxi:{n:'Abacaxi natural', p:[[0,0],[.048,0],[.06,.04],[.062,.1],[.052,.14]], b:0, f:.9, mat:'abacaxi'},
+  plastico:{n:'Copo de plástico', p:[[0,0],[.03,0],[.031,.004],[.04,.13]], b:0, f:.82, mat:'plastico'},
+};
+const BAR_ACC = {
+  canudoPapel:'Canudo de papel', canudoBambu:'Canudo de bambu', canudoMetal:'Canudo de inox', guarda:'Guarda-chuvinha', palito:'Palito com frutas',
+  bordaSal:'Borda de sal', bordaAcucar:'Borda de açúcar', rodelaLimao:'Rodela de limão', rodelaLaranja:'Rodela de laranja', hortela:'Ramo de hortelã',
+  abacaxiFatia:'Fatia de abacaxi', morango:'Morango na borda', cereja:'Cereja', flor:'Flor comestível',
+};
+const STRAWS = ['canudoPapel', 'canudoBambu', 'canudoMetal'], FANCY = ['guarda', 'flor', 'cereja', 'palito'];
+function mixColor(ing){
+  let r = 0, g = 0, b = 0, w = 0;
+  for (const k of ing){ const d = BAR_ING[k]; if (!d || !d.w) continue; r += (d.c >> 16 & 255)*d.w; g += (d.c >> 8 & 255)*d.w; b += (d.c & 255)*d.w; w += d.w; }
+  return w ? (Math.round(r/w) << 16) | (Math.round(g/w) << 8) | Math.round(b/w) : 0xEEF4F6;
+}
 const DRINKS = [
-  {id:'caipirinha', name:'Caipirinha', ing:['cachaca','limao','acucar','gelo'], method:'macerar', glass:'baixo', garnish:'limao', price:28, color:0xE8F2A0, tag:'Clássico brasileiro'},
-  {id:'mojito', name:'Mojito', ing:['rum','hortela','limao','acucar','gas','gelo'], method:'macerar', glass:'long', garnish:'hortela', price:32, color:0xDDF4D6, tag:'Cubano refrescante'},
-  {id:'pina', name:'Piña Colada', ing:['rum','abacaxi','coco','gelo'], method:'bater', glass:'hurricane', garnish:'abacaxi', price:36, color:0xFFF4D6, tag:'Cremoso tropical'},
-  {id:'margarita', name:'Margarita', ing:['tequila','licorlaranja','limao','gelo'], method:'agitar', glass:'margarita', garnish:'sal', price:34, color:0xE8F0B0, tag:'Mexicano cítrico'},
-  {id:'sunset', name:'Sunset do Resort', ing:['vodka','laranja','groselha','gelo'], method:'montar', glass:'long', garnish:'guarda', price:30, color:0xF7864A, tag:'Especial da casa'},
-  {id:'batida', name:'Batida de Maracujá', ing:['cachaca','maracuja','acucar','gelo'], method:'bater', glass:'baixo', garnish:'nenhum', price:26, color:0xF6D24A, tag:'Bem brasileira'},
-  {id:'gintonica', name:'Gin Tônica', ing:['gim','tonica','limao','gelo'], method:'montar', glass:'balao', garnish:'limao', price:30, color:0xEAF6F8, tag:'Leve e amarga'},
-  {id:'smash', name:'Morango Smash (sem álcool)', ing:['morango','limao','acucar','gas','gelo'], method:'macerar', glass:'long', garnish:'morango', price:22, color:0xF28CA0, tag:'Zero álcool'},
+  {id:'caipirinha', name:'Caipirinha', ing:['cachaca','limao','acucar'], dose:50, ice:'picado', method:'macerar', glass:'rocks', acc:['rodelaLimao'], price:28, tag:'Clássico brasileiro'},
+  {id:'mojito', name:'Mojito', ing:['rum','hortela','limao','acucar','gas'], dose:50, ice:'cubos', method:'macerar', glass:'highball', alt:['collins'], acc:['hortela','canudoPapel'], price:32, tag:'Cubano refrescante'},
+  {id:'pina', name:'Piña Colada', ing:['rum','abacaxi','coco'], dose:50, ice:'picado', method:'bater', glass:'hurricane', alt:['abacaxi','tiki'], acc:['abacaxiFatia','cereja'], price:36, tag:'Cremoso tropical'},
+  {id:'margarita', name:'Margarita', ing:['tequila','licorlaranja','limao'], dose:50, ice:'sem', method:'agitar', glass:'margarita', alt:['coupe'], acc:['bordaSal','rodelaLimao'], price:34, tag:'Mexicano cítrico'},
+  {id:'sunset', name:'Sunset do Resort', ing:['vodka','laranja','groselha'], dose:50, ice:'cubos', method:'montar', glass:'collins', alt:['highball','hurricane'], acc:['guarda','rodelaLaranja'], price:30, tag:'Especial da casa'},
+  {id:'batida', name:'Batida de Maracujá', ing:['cachaca','maracuja','leitecond','acucar'], dose:50, ice:'picado', method:'bater', glass:'rocks', alt:['plastico'], acc:[], price:26, tag:'Bem brasileira'},
+  {id:'gintonica', name:'Gin Tônica', ing:['gim','tonica','limao'], dose:50, ice:'cubos', method:'montar', glass:'balao', acc:['rodelaLimao'], price:30, tag:'Leve e amarga'},
+  {id:'spritz', name:'Aperol Spritz', ing:['aperol','espumante','gas'], dose:60, ice:'cubos', method:'montar', glass:'balao', acc:['rodelaLaranja'], price:34, tag:'Aperitivo italiano'},
+  {id:'cosmo', name:'Cosmopolitan', ing:['vodka','licorlaranja','cranberry','limao'], dose:50, ice:'sem', method:'agitar', glass:'martini', alt:['coupe'], acc:['rodelaLaranja'], price:36, tag:'Elegante e frutado'},
+  {id:'maitai', name:'Mai Tai', ing:['rum','licorlaranja','limao','abacaxi'], dose:60, ice:'picado', method:'agitar', glass:'tiki', alt:['rocks'], acc:['hortela','abacaxiFatia'], price:38, tag:'Clássico tiki'},
+  {id:'smash', name:'Morango Smash', ing:['morango','limao','acucar','gas'], ice:'picado', method:'macerar', glass:'highball', alt:['collins','plastico'], acc:['morango','canudoPapel'], price:22, tag:'Sem álcool'},
+  {id:'suica', name:'Limonada Suíça', ing:['limao','acucar','leitecond'], ice:'picado', method:'bater', glass:'collins', alt:['highball','plastico'], acc:['rodelaLimao','canudoPapel'], price:18, tag:'Sem álcool · cremosa'},
+  {id:'aguacoco', name:'Água de Coco Gelada', ing:['aguacoco'], ice:'cubos', method:'montar', glass:'coco', alt:['highball'], acc:['canudoBambu'], price:16, tag:'Sem álcool · natural'},
 ];
-const BARMIX = {orders:[], mix:{ing:[], method:null, glass:null, garnish:null}, open:false, made:0};
+DRINKS.forEach(d => { d.alc = d.ing.some(k => BAR_ING[k].alc); d.color = mixColor(d.ing); });
+/* O que cada tipo de hóspede costuma pedir e exigir no bar */
+const CLIENT_BAR = {
+  familia:{label:'Família', pool:['smash','suica','aguacoco','pina','sunset']},
+  executivo:{label:'Executivo', pool:['caipirinha','gintonica','margarita','cosmo','spritz']},
+  vip:{label:'VIP', pool:['cosmo','spritz','maitai','pina','gintonica','margarita']},
+  mochileiro:{label:'Mochileiro', pool:['caipirinha','batida','smash','aguacoco','sunset','mojito']},
+};
+const freshMix = () => ({ing:[], dose:50, glass:null, ice:null, method:null, acc:[]});
+const BARMIX = {orders:[], mix:freshMix(), open:false, made:0, seq:0, step:0, sel:null};
 function barLabel(){
   if (!G.upg.bar) return 'Pool bar fechado · libere em Gestão do Hotel › Melhorias';
-  const n = BARMIX.orders.filter(o => !o.ready).length;
-  return `[E] Preparar drinques · ${n} pedido(s)${BAR.earn > 0 ? ` · vendas ${fmt(BAR.earn)}` : ''}`;
+  const n = BARMIX.orders.length;
+  return `[E] Estação de drinques · ${n} pedido(s)${BAR.earn > 0 ? ` · vendas ${fmt(BAR.earn)}` : ''}`;
+}
+/* Pedido de acordo com o cliente: receita do menu + o que o perfil exige + uma observação pessoal às vezes */
+function makeDrinkOrder(n){
+  const type = n.profile && CLIENT_BAR[n.profile.type] ? n.profile.type : 'mochileiro', cb = CLIENT_BAR[type];
+  const kid = type === 'familia' && Math.random() < .6;
+  const pool = cb.pool.map(id => DRINKS.find(d => d.id === id)).filter(d => d && (!kid || !d.alc));
+  const d = pick(pool.length ? pool : DRINKS.filter(d => !d.alc));
+  const exp = {ing:d.ing.slice(), dose:d.dose || 0, ice:d.ice, method:d.method, glass:d.glass, alt:(d.alt || []).slice(), acc:d.acc.slice()};
+  const notes = [], rules = {noAlc:kid, forbidIng:[], forbidAcc:[], noFancy:false, premium:false, plasticOk:type === 'mochileiro'};
+  const addAcc = a => { if (!exp.acc.includes(a)) exp.acc.push(a); };
+  if (kid){ notes.push('Para criança: sem álcool, canudo de papel e guarda-chuvinha'); addAcc('guarda'); if (!exp.acc.some(a => STRAWS.includes(a))) addAcc('canudoPapel'); rules.forbidAcc.push('canudoMetal'); }
+  if (type === 'executivo'){ notes.push('Executivo: clássico e discreto, sem enfeite exagerado'); rules.noFancy = true; exp.acc = exp.acc.filter(a => !FANCY.includes(a)); }
+  if (type === 'vip'){ notes.push('VIP: copo de cristal certo e flor comestível'); rules.premium = true; addAcc('flor'); if (d.alc && Math.random() < .5){ exp.dose = 60; notes.push('Quer dose dupla (60 ml)'); } }
+  if (type === 'mochileiro') notes.push('Mochileiro: sem frescura, aceita copo de plástico');
+  const extra = [];
+  if (exp.ing.includes('acucar')) extra.push(['Sem açúcar', () => { exp.ing = exp.ing.filter(k => k !== 'acucar'); rules.forbidIng.push('acucar'); }]);
+  if (exp.ice !== 'sem') extra.push(['Sem gelo', () => { exp.ice = 'sem'; }]);
+  if (exp.ice === 'cubos' && type !== 'mochileiro') extra.push(['Gelo em esfera (derrete devagar)', () => { exp.ice = 'esfera'; }]);
+  if (!exp.ing.includes('morango') && !exp.acc.includes('morango')) extra.push(['Alérgico a morango', () => { rules.forbidIng.push('morango'); rules.forbidAcc.push('morango'); }]);
+  if (extra.length && Math.random() < .45){ const [t, f] = pick(extra); notes.push(t); f(); }
+  if (!kid && !rules.noFancy && Math.random() < .3 && !exp.acc.some(a => STRAWS.includes(a)) && ['rocks','highball','collins','hurricane','tiki','coco','abacaxi','plastico'].includes(exp.glass)){ addAcc('canudoBambu'); notes.push('Prefere canudo de bambu'); }
+  const wait = type === 'vip' ? 55 : 70;
+  return {guest:n, drink:d, exp, notes, rules, type, kid, wait, wait0:wait, no:++BARMIX.seq};
 }
 function maybeOrderDrink(n, l){
   if (!G.upg.bar || Math.random() > .75) return;
   setTimeout(() => {
     if (n.state !== 'relax' || BARMIX.orders.some(o => o.guest === n) || BARMIX.orders.length >= 5) return;
-    const d = pick(DRINKS); BARMIX.orders.push({guest:n, lounger:l, drink:d, wait:60});
-    l.drink.visible = false; n.timer = Math.max(n.timer || 0, 55);
-    toast(`${n.profile ? n.profile.name : 'Hóspede'} (espreguiçadeira ${l.i + 1}) pediu ${d.name}`, '');
+    const o = makeDrinkOrder(n); o.lounger = l; BARMIX.orders.push(o);
+    l.drink.visible = false; n.timer = Math.max(n.timer || 0, o.wait - 5);
+    toast(`${n.profile ? n.profile.name : 'Hóspede'} (${o.kid ? 'criança da família' : CLIENT_BAR[o.type].label}, espreguiçadeira ${l.i + 1}) pediu ${o.drink.name}${o.notes.length ? ' · veja a comanda no bar' : ''}`, '');
   }, 2500);
 }
 ANIM.push((dt) => {
   if (!dt) return;
   for (let i = BARMIX.orders.length - 1; i >= 0; i--){
     const o = BARMIX.orders[i];
-    if (o.guest.state !== 'relax'){ BARMIX.orders.splice(i, 1); if (CARRY && CARRY.order === o) CARRY.order = null; continue; }
+    if (o.guest.state !== 'relax'){ BARMIX.orders.splice(i, 1); if (CARRY && CARRY.order === o) CARRY.order = null; if (BARMIX.sel === o) BARMIX.sel = null; continue; }
     o.wait -= dt;
     o.guest.tag.userData.set(`Pediu: ${o.drink.name} · ${Math.ceil(o.wait)}s`, o.wait < 20 ? 'rgba(232,106,90,.95)' : 'rgba(245,197,66,.95)', '#2A1B14');
     if (o.wait <= 0){
-      BARMIX.orders.splice(i, 1);
+      BARMIX.orders.splice(i, 1); if (CARRY && CARRY.order === o) CARRY.order = null; if (BARMIX.sel === o) BARMIX.sel = null;
       if (G.upg.bar && G.staff && BAR){ const v = Math.round(o.drink.price*.7); BAR.earn += v; o.lounger.drink.visible = true; toast(`O barman serviu ${o.drink.name} atrasado · sem gorjeta`, ''); }
       addRep(-1);
     }
   }
 });
+/* Nota de 0 a 100: receita 40 + dose 5 + copo 15 + gelo 10 + preparo 10 + acessórios 20. Álcool para criança ou
+   alérgeno no copo são recusa na hora. */
+function evalDrink(mix, o){
+  const e = o.exp, r = o.rules, fails = [], notes = [], alc = mix.ing.some(k => BAR_ING[k].alc);
+  if (r.noAlc && alc) fails.push('tem álcool e o pedido é para criança');
+  if (r.forbidIng.includes('morango') && (mix.ing.includes('morango') || mix.acc.includes('morango'))) fails.push('o hóspede é alérgico a morango');
+  let s = 0;
+  const inter = mix.ing.filter(k => e.ing.includes(k)).length, uni = new Set(mix.ing.concat(e.ing)).size;
+  s += 40*(uni ? inter/uni : 0);
+  const miss = e.ing.filter(k => !mix.ing.includes(k)), extra = mix.ing.filter(k => !e.ing.includes(k));
+  if (miss.length) notes.push('faltou ' + miss.map(k => BAR_ING[k].n.toLowerCase()).join(', '));
+  if (extra.length) notes.push((r.forbidIng.includes('acucar') && extra.includes('acucar') ? 'pediu sem açúcar · ' : '') + 'sobrou ' + extra.map(k => BAR_ING[k].n.toLowerCase()).join(', '));
+  if (!e.dose || !alc || mix.dose === e.dose) s += 5; else notes.push('dose certa: ' + BAR_DOSE[e.dose].toLowerCase());
+  if (mix.glass === e.glass || (mix.glass === 'plastico' && r.plasticOk)) s += 15;
+  else if (e.alt.includes(mix.glass) && !(r.premium && mix.glass === 'plastico')){ s += 9; notes.push('o copo ideal é ' + BAR_GLASSES[e.glass].n.toLowerCase()); }
+  else notes.push('copo errado: o ideal é ' + BAR_GLASSES[e.glass].n.toLowerCase());
+  if (r.premium && mix.glass === 'plastico'){ s -= 10; notes.push('VIP servido em copo de plástico'); }
+  if (mix.ice === e.ice) s += 10; else { if (mix.ice && mix.ice !== 'sem' && e.ice !== 'sem') s += 4; notes.push('gelo: ' + BAR_ICE[e.ice].toLowerCase()); }
+  if (mix.method === e.method) s += 10; else notes.push('preparo: ' + BAR_METHOD[e.method].toLowerCase());
+  const need = e.acc, got = mix.acc, hit = need.filter(a => got.includes(a)).length;
+  s += need.length ? 14*hit/need.length : 14;
+  let ap = 6;
+  const missA = need.filter(a => !got.includes(a));
+  if (missA.length) notes.push('faltou ' + missA.map(a => BAR_ACC[a].toLowerCase()).join(', '));
+  for (const a of got.filter(a => !need.includes(a))){
+    if (r.forbidAcc.includes(a)){ ap -= 6; notes.push(BAR_ACC[a].toLowerCase() + ' não combina com esse cliente'); }
+    else if (r.noFancy && FANCY.includes(a)){ ap -= 3; notes.push('executivo não gosta de ' + BAR_ACC[a].toLowerCase()); }
+    else ap -= 1.5;
+  }
+  s += Math.max(0, ap);
+  if (got.filter(a => STRAWS.includes(a)).length > 1){ s -= 3; notes.push('dois canudos no mesmo copo'); }
+  if (got.includes('bordaSal') && got.includes('bordaAcucar')){ s -= 3; notes.push('sal e açúcar na mesma borda'); }
+  return {score:Math.max(0, Math.min(100, Math.round(s))), fails, notes};
+}
+function matchRecipe(mix){
+  let best = null, bs = 0;
+  for (const d of DRINKS){ const i = mix.ing.filter(k => d.ing.includes(k)).length, u = new Set(mix.ing.concat(d.ing)).size, s = u ? i/u : 0; if (s > bs){ bs = s; best = d; } }
+  return bs >= .6 ? best : null;
+}
+/* Drinque em 3D (prévia do balcão, mão do jogador e mesinha da espreguiçadeira): copo em LatheGeometry com vidro
+   físico, líquido na cor da mistura, gelo do tipo escolhido e cada acessório no lugar */
+const GGEO = {}, GMAT = {};
+const gGeo = (k, f) => GGEO[k] || (GGEO[k] = f()), gmat = (k, f) => GMAT[k] || (GMAT[k] = f());
+function glassAt(id, y){ const p = BAR_GLASSES[id].p; for (let i = 1; i < p.length; i++) if (p[i][1] >= y){ const [r0, y0] = p[i - 1], [r1, y1] = p[i], t = (y - y0)/((y1 - y0) || 1); return r0 + (r1 - r0)*t; } return p[p.length - 1][0]; }
+function liquidLevel(id){ const gl = BAR_GLASSES[id], p = gl.p.slice(gl.b); return p[0][1] + (p[p.length - 1][1] - p[0][1])*gl.f; }
+function liquidGeo(id){
+  const gl = BAR_GLASSES[id], p = gl.p.slice(gl.b), y0 = p[0][1], lv = liquidLevel(id), pts = [[0, y0 + .003]];
+  for (let i = 0; i < p.length; i++){
+    const [r, y] = p[i];
+    if (y >= lv){ const [ra, ya] = i ? p[i - 1] : p[i], t = (lv - ya)/((y - ya) || 1); pts.push([Math.max(.001, ra + (r - ra)*t - .003), lv]); break; }
+    pts.push([Math.max(.001, r - .003), Math.max(y, y0 + .003)]);
+  }
+  pts.push([0, lv]);
+  return LATHE(pts, 28);
+}
+function drinkModel(mix){
+  const id = BAR_GLASSES[mix.glass] ? mix.glass : 'highball', gl = BAR_GLASSES[id], g = new THREE.Group();
+  const R = gl.p[gl.p.length - 1][0], top = gl.p[gl.p.length - 1][1], lv = liquidLevel(id), rl = Math.max(.012, glassAt(id, lv) - .004);
+  const shell = gl.mat === 'tiki' ? gmat('tiki', () => PHYS(0x7A3E1E, {roughness:.4, clearcoat:.9, side:THREE.DoubleSide}))
+    : gl.mat === 'coco' ? gmat('coco', () => PHYS(0x5E3E22, {roughness:.95, side:THREE.DoubleSide}))
+    : gl.mat === 'abacaxi' ? gmat('abacaxi', () => PHYS(0xC8962E, {roughness:.75, side:THREE.DoubleSide}))
+    : gl.mat === 'plastico' ? gmat('plastico', () => GLASS(0xF4F7F9, .45, {roughness:.4, clearcoat:0}))
+    : gmat('cristal', () => GLASS(0xF6FBFF, .2));
+  const body = new THREE.Mesh(gGeo('g_' + id, () => LATHE(gl.p, 32)), shell); body.renderOrder = 3; g.add(body);
+  const put = (geo, mat, x, y, z, par = g) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); par.add(o); return o; };
+  const sphere = gGeo('esf', () => new THREE.SphereGeometry(1, 12, 8));
+  if (gl.mat === 'abacaxi'){ const leaf = gmat('folha', () => PHYS(0x3E7A2E, {roughness:.6}));
+    for (let i = 0; i < 7; i++){ const a = i/7*Math.PI*2, l = put(gGeo('folhaAb', () => new THREE.ConeGeometry(.01, .08, 4)), leaf, Math.cos(a)*(R - .008), top + .03, Math.sin(a)*(R - .008)); l.rotation.set(Math.sin(a)*.5, 0, -Math.cos(a)*.5); } }
+  const ing = mix.ing || [];
+  if (ing.length){
+    const cream = ing.some(k => BAR_ING[k] && BAR_ING[k].cream) || mix.method === 'bater', col = mixColor(ing);
+    const lm = gmat('liq' + col + (cream ? 'c' : ''), () => PHYS(col, {roughness:cream ? .55 : .1, transparent:true, opacity:cream ? .95 : .72, clearcoat:cream ? 0 : .5, depthWrite:false}));
+    const lq = put(gGeo('l_' + id, () => liquidGeo(id)), lm, 0, 0, 0); lq.renderOrder = 2;
+  }
+  const iceM = gmat('gelo', () => PHYS(0xF2FAFF, {roughness:.08, transparent:true, opacity:.55, clearcoat:1, depthWrite:false}));
+  if (mix.ice === 'cubos') for (let i = 0; i < 3; i++){ const a = i*2.1, c = put(gGeo('cubo', () => new THREE.BoxGeometry(.02, .02, .02)), iceM, Math.cos(a)*rl*.45, lv - .008 - (i % 2)*.012, Math.sin(a)*rl*.45); c.rotation.set(i*.7, i*1.3, i*.4); c.renderOrder = 4; }
+  else if (mix.ice === 'picado') for (let i = 0; i < 9; i++){ const a = i*2.4, rr = rl*.75*Math.sqrt((i + .5)/9), c = put(gGeo('lasca', () => new THREE.OctahedronGeometry(.008)), iceM, Math.cos(a)*rr, lv - .002, Math.sin(a)*rr); c.rotation.set(i, i*.5, 0); c.renderOrder = 4; }
+  else if (mix.ice === 'esfera'){ const rs = Math.min(.028, rl*.8), c = put(sphere, iceM, 0, lv - rs*.6, 0); c.scale.setScalar(rs); c.renderOrder = 4; }
+  const surf = Math.max(lv, top - .03);
+  const onRim = (ang, obj) => { const w = new THREE.Group(); w.rotation.y = ang; w.add(obj); g.add(w); return obj; };
+  const STRAW_COL = {canudoPapel:0xF4EEE2, canudoBambu:0xC9A064, canudoMetal:0xD6DCE2}, wood = () => gmat('madeira', () => PHYS(0xE8D3A8, {roughness:.8}));
+  let si = 0;
+  for (const a of (mix.acc || [])){
+    if (STRAW_COL[a] !== undefined){
+      const s = put(gGeo('canudo', () => new THREE.CylinderGeometry(.0035, .0035, .22, 10)), gmat('m_' + a, () => PHYS(STRAW_COL[a], a === 'canudoMetal' ? {metalness:1, roughness:.18} : {roughness:.6})), R*.3 + si*.01, top + .02, -R*.2);
+      s.rotation.set(.12, 0, -.22); si++;
+    } else if (a === 'guarda'){
+      const u = new THREE.Group(); u.position.set(-R*.45, top - .01, R*.2); u.rotation.z = .35; g.add(u);
+      put(gGeo('palito', () => new THREE.CylinderGeometry(.0015, .0015, .12, 6)), wood(), 0, .04, 0, u);
+      put(gGeo('guarda', () => new THREE.ConeGeometry(.045, .022, 12, 1, true)), gmat('papelRosa', () => PHYS(0xF2668A, {roughness:.7, side:THREE.DoubleSide})), 0, .1, 0, u);
+    } else if (a === 'palito'){
+      const u = new THREE.Group(); u.position.set(0, top + .006, 0); u.rotation.set(0, .6, Math.PI/2 - .25); g.add(u);
+      put(gGeo('palito2', () => new THREE.CylinderGeometry(.0015, .0015, .16, 6)), wood(), 0, 0, 0, u);
+      [[0xC2203F, .009], [0xF6D860, .011], [0x8FBF3A, .01]].forEach(([c, r], i) => put(sphere, gmat('fruta' + c, () => PHYS(c, {roughness:.35, clearcoat:.6})), 0, (i - 1)*.025, 0, u).scale.setScalar(r));
+    } else if (a === 'bordaSal' || a === 'bordaAcucar'){
+      const t = put(gGeo('borda_' + id, () => new THREE.TorusGeometry(R, .0035, 6, 40)), gmat(a, () => PHYS(a === 'bordaSal' ? 0xF4F4F2 : 0xFFF4DC, {roughness:.95})), 0, top - .002, 0); t.rotation.x = Math.PI/2;
+    } else if (a === 'rodelaLimao' || a === 'rodelaLaranja'){
+      const s = onRim(a === 'rodelaLimao' ? 0 : .9, new THREE.Mesh(gGeo('rodela', () => new THREE.CylinderGeometry(.022, .022, .005, 20)), gmat(a, () => PHYS(a === 'rodelaLimao' ? 0xB8D84A : 0xF7A030, {roughness:.5, clearcoat:.4}))));
+      s.position.set(R, top - .008, 0); s.rotation.x = Math.PI/2;
+    } else if (a === 'hortela'){
+      for (let i = 0; i < 4; i++){ const l = put(sphere, gmat('hortela', () => PHYS(0x3E9A3E, {roughness:.55})), Math.cos(i*1.6)*.01, surf + .012 + i*.004, Math.sin(i*1.6)*.01 - R*.3); l.scale.set(.014, .003, .008); l.rotation.set(0, i*1.6, .4); }
+    } else if (a === 'abacaxiFatia'){
+      const s = onRim(2.2, new THREE.Mesh(gGeo('fatia', () => new THREE.BoxGeometry(.012, .035, .045)), gmat('polpa', () => PHYS(0xF6D860, {roughness:.5})))); s.position.set(R, top - .004, 0);
+    } else if (a === 'morango'){
+      const s = onRim(-.9, new THREE.Mesh(sphere, gmat('frutaMorango', () => PHYS(0xE8455A, {roughness:.35, clearcoat:.6})))); s.position.set(R, top + .004, 0); s.scale.set(.016, .019, .016);
+    } else if (a === 'cereja'){
+      put(sphere, gmat('cereja', () => PHYS(0x8A0F1E, {roughness:.2, clearcoat:1})), R*.2, surf + .01, R*.25).scale.setScalar(.009);
+      const st = put(gGeo('cabinho', () => new THREE.CylinderGeometry(.0008, .0008, .03, 4)), gmat('cabinho', () => PHYS(0x4A6A2A)), R*.2 + .004, surf + .026, R*.25); st.rotation.z = -.3;
+    } else if (a === 'flor'){
+      for (let i = 0; i < 5; i++) put(sphere, gmat('petala', () => PHYS(0xC86BC8, {roughness:.6})), -R*.25 + Math.cos(i*1.257)*.009, surf + .006, Math.sin(i*1.257)*.009).scale.set(.008, .002, .008);
+      put(sphere, gmat('miolo', () => PHYS(0xF5C542)), -R*.25, surf + .008, 0).scale.setScalar(.004);
+    }
+  }
+  return g;
+}
+function showLoungerDrink(l, mix){ while (l.drink.children.length) l.drink.remove(l.drink.children[0]); l.drink.add(drinkModel(mix)); l.drink.visible = true; }
 function deliverDrink(o){
-  const d = CARRY.drink, ok = d.id === o.drink.id;
-  if (!ok){ SFX.error(); toast(`Esse hóspede pediu ${o.drink.name}, não ${d.name}`, 'bad'); return; }
-  const tip = Math.round(o.drink.price*(.15 + Math.max(0, o.wait)/60*.35));
-  addMoney(o.drink.price + tip, `Drinque ${o.drink.name} · pool bar`); addRep(2); SFX.coin();
-  o.lounger.drink.visible = true; o.lounger.drink.children[0].material.color.setHex(o.drink.color);
-  BARMIX.orders.splice(BARMIX.orders.indexOf(o), 1); setCarry(null); BARMIX.made++;
-  toast(`${o.drink.name} entregue · ${fmt(o.drink.price)} + ${fmt(tip)} de gorjeta`, 'good');
+  const c = CARRY, res = evalDrink(c.mix, o), name = c.drink.name, who = o.guest.profile ? o.guest.profile.name : 'O hóspede';
+  if (res.fails.length){ SFX.error(); addRep(-2); setCarry(null); toast(`${who} recusou o ${name}: ${res.fails[0]}`, 'bad'); return; }
+  const q = res.score/100, price = o.drink.price, pay = Math.round(price*(q < .5 ? .5 : 1));
+  const tip = q < .5 ? 0 : Math.round(price*(.1 + .5*q*q)*(.5 + .5*Math.max(0, o.wait)/o.wait0));
+  addMoney(pay + tip, `Drinque ${name} · pool bar`); SFX.coin();
+  addRep(q >= .85 ? 3 : q >= .6 ? 1 : q >= .5 ? 0 : -1);
+  showLoungerDrink(o.lounger, c.mix);
+  BARMIX.orders.splice(BARMIX.orders.indexOf(o), 1); if (BARMIX.sel === o) BARMIX.sel = null; setCarry(null); BARMIX.made++;
+  const verdict = q >= .9 ? 'Perfeito' : q >= .75 ? 'Muito bom' : q >= .5 ? 'Aceitável' : 'O hóspede não gostou';
+  toast(`${verdict} · ${res.score}/100 · ${name} · ${fmt(pay)} + ${fmt(tip)} de gorjeta${q < .9 && res.notes.length ? ' · ' + res.notes[0] : ''}`, q >= .5 ? 'good' : 'bad');
 }
 LOUNGERS.forEach(l => {
   const old = l.g.userData.ia;
   l.g.userData.ia = {
-    label:() => { const o = BARMIX.orders.find(o => o.lounger === l); if (o && CARRY && CARRY.kind === 'drink') return `[E] Entregar ${CARRY.drink.name} (pediu ${o.drink.name})`; if (o) return `Pediu ${o.drink.name} · prepare no pool bar`; return old.label(); },
+    label:() => { const o = BARMIX.orders.find(o => o.lounger === l); if (o && CARRY && CARRY.kind === 'drink') return `[E] Entregar ${CARRY.drink.name} (pediu ${o.drink.name})`; if (o) return `Pediu ${o.drink.name}${o.notes.length ? ` · ${o.notes.length} observação(ões)` : ''} · prepare no pool bar`; return old.label(); },
     ok:() => { const o = BARMIX.orders.find(o => o.lounger === l); return (o && CARRY && CARRY.kind === 'drink') || old.ok(); },
     action:() => { const o = BARMIX.orders.find(o => o.lounger === l); if (o && CARRY && CARRY.kind === 'drink') return deliverDrink(o); return old.action(); }};
 });
-/* Painel do balcão: pedidos, Menu Especial com as receitas e a estação de preparo */
+/* Estação de drinques: comanda → copo → bebidas e dose → gelo e preparo → acessórios → conferência, com prévia 3D */
 const MIX_EL = (() => {
   const d = document.createElement('div'); d.className = 'overlay modal'; d.id = 'mix'; d.hidden = true;
-  d.innerHTML = `<div class="panel sheet" role="dialog" aria-label="Pool bar" style="width:min(960px,100%);max-height:min(720px,calc(100vh - 40px))">
-    <header><h2>Pool Bar · Menu Especial</h2><button class="close" id="mixClose">Fechar · Esc</button></header>
-    <section id="mixBody" style="overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px;padding:14px"></section></div>`;
+  d.innerHTML = `<div class="panel sheet" role="dialog" aria-label="Pool bar" style="width:min(1080px,100%);max-height:min(780px,calc(100vh - 40px))">
+    <header><h2>Pool Bar · Estação de Drinques</h2><button class="close" id="mixClose">Fechar · Esc</button></header>
+    <div style="overflow:auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;padding:14px">
+      <section id="mixBody" style="min-width:0"></section>
+      <aside style="min-width:0"><canvas id="mixCanvas" style="width:100%;height:240px;display:block;border-radius:12px;background:radial-gradient(circle at 50% 35%,#4A3426,#1E1410)"></canvas><div id="mixSide"></div></aside></div></div>`;
   document.body.appendChild(d); return d;
 })();
 const chip = (on, attr, val, txt) => `<button ${attr}="${val}" style="margin:3px;padding:6px 10px;border-radius:999px;border:1px solid ${on ? '#D8A64A' : '#6E5A44'};background:${on ? '#D8A64A' : 'transparent'};color:${on ? '#2A1B14' : '#F6EFE3'};font:600 12.5px Outfit,sans-serif;cursor:pointer">${txt}</button>`;
+const MIX_STEPS = ['Comanda', 'Copo', 'Bebidas', 'Gelo e preparo', 'Acessórios', 'Servir'];
+const TYPE_COL = {familia:'#7FD8C8', executivo:'#9FB8E8', vip:'#F2C94C', mochileiro:'#E8A07A'};
+function recipeLine(d){ return `${d.ing.map(k => BAR_ING[k].n).join(', ')}${d.dose ? ' · ' + d.dose + ' ml' : ''} · ${BAR_GLASSES[d.glass].n} · ${BAR_ICE[d.ice]} · ${BAR_METHOD[d.method]}${d.acc.length ? ' · ' + d.acc.map(a => BAR_ACC[a]).join(', ') : ''}`; }
+function orderCard(o, on){
+  const who = o.guest.profile ? o.guest.profile.name : 'Hóspede';
+  return `<button data-ord="${o.no}" style="display:block;width:100%;text-align:left;margin:6px 0;padding:10px 12px;border-radius:10px;border:1px solid ${on ? '#D8A64A' : '#6E5A44'};background:${on ? 'rgba(216,166,74,.18)' : 'rgba(255,255,255,.04)'};color:#F6EFE3;font:500 13px/1.45 Outfit,sans-serif">
+    <span style="display:flex;justify-content:space-between;gap:8px"><b style="font:400 17px Gloock,Georgia,serif">${o.drink.name}</b><span style="color:${o.wait < 20 ? '#F29A8E' : '#CDBFA8'}">${Math.ceil(o.wait)}s</span></span>
+    <span style="color:#CDBFA8">Espreguiçadeira ${o.lounger.i + 1} · ${who} · </span><span style="color:${TYPE_COL[o.type] || '#CDBFA8'};font-weight:700">${o.kid ? 'Família (criança)' : CLIENT_BAR[o.type].label}</span>
+    ${o.notes.map(t => `<br><span style="color:#F2C94C">• ${t}</span>`).join('')}</button>`;
+}
 function renderMixer(){
-  const m = BARMIX.mix, pend = BARMIX.orders;
-  const orders = pend.length ? pend.map(o => `<div class="role" style="grid-template-columns:1fr"><b>${o.drink.name}</b><small>Espreguiçadeira ${o.lounger.i + 1} · ${o.guest.profile ? o.guest.profile.name : 'Hóspede'} · ${Math.ceil(o.wait)}s</small></div>`).join('') : '<p class="sub">Nenhum pedido agora. Os hóspedes pedem quando deitam nas espreguiçadeiras.</p>';
-  const menu = DRINKS.map(d => `<div style="padding:8px 0;border-bottom:1px solid rgba(216,166,74,.25)"><b style="font-family:Gloock,Georgia,serif;font-size:17px;color:#F6EFE3">${d.name}</b> <span style="color:#7FD8C8">${fmt(d.price)}</span><br><small style="color:#CDBFA8">${d.tag} · ${d.ing.map(k => BAR_ING[k]).join(', ')} · ${BAR_METHOD[d.method]} · ${BAR_GLASSES[d.glass]} · ${BAR_GARNISH[d.garnish]}</small></div>`).join('');
-  const groups = BAR_ING_GROUPS.map(([gname, list]) => `<p class="sub" style="margin:8px 0 2px">${gname}</p>` + list.map(k => chip(m.ing.includes(k), 'data-ing', k, BAR_ING[k])).join('')).join('');
-  const pickRow = (title, dict, cur, attr) => `<p class="sub" style="margin:10px 0 2px">${title}</p>` + Object.entries(dict).map(([k, v]) => chip(cur === k, attr, k, v)).join('');
-  const holding = CARRY && CARRY.kind === 'drink';
-  $('mixBody').innerHTML = `
-    <div><p class="sub">Pedidos</p>${orders}
-      <p class="sub" style="margin-top:14px">Menu Especial</p>${menu}
-      ${BAR.earn > 0 ? `<button id="mixCollect" style="margin-top:12px;padding:9px 14px;border-radius:9px;border:1px solid #D8A64A;background:#3B2214;color:#F6EFE3;font:600 13px Outfit,sans-serif">Coletar vendas · ${fmt(BAR.earn)}</button>` : ''}</div>
-    <div><p class="sub">Estação de preparo</p>${groups}
-      ${pickRow('Método', BAR_METHOD, m.method, 'data-met')}${pickRow('Copo', BAR_GLASSES, m.glass, 'data-gl')}${pickRow('Guarnição', BAR_GARNISH, m.garnish, 'data-gar')}
+  const m = BARMIX.mix, st = BARMIX.step;
+  if (BARMIX.sel && !BARMIX.orders.includes(BARMIX.sel)) BARMIX.sel = null;
+  const sel = BARMIX.sel, alc = m.ing.some(k => BAR_ING[k].alc);
+  const tabs = MIX_STEPS.map((t, i) => `<button data-step="${i}" style="padding:6px 10px;border-radius:8px;font:600 12.5px Outfit,sans-serif;border:1px solid ${i === st ? '#D8A64A' : 'transparent'};background:${i === st ? '#D8A64A' : 'rgba(255,255,255,.05)'};color:${i === st ? '#2A1B14' : '#F6EFE3'}">${i + 1}. ${t}</button>`).join('');
+  const pickRow = (title, dict, cur, attr) => `<p class="sub" style="margin:10px 0 2px">${title}</p>` + Object.entries(dict).map(([k, v]) => chip(String(cur) === k, attr, k, v)).join('');
+  let body = '';
+  if (st === 0){
+    body = `<p class="sub">Comandas do bar · escolha quem você vai atender</p>` + (BARMIX.orders.length ? BARMIX.orders.map(o => orderCard(o, o === sel)).join('') : '<p class="sub">Nenhum pedido agora. Os hóspedes pedem quando deitam nas espreguiçadeiras.</p>')
+      + `<details style="margin-top:12px"><summary class="sub" style="cursor:pointer">Menu Especial · ${DRINKS.length} receitas</summary>${DRINKS.map(d => `<div style="padding:7px 0;border-bottom:1px solid rgba(216,166,74,.25)"><b style="font-family:Gloock,Georgia,serif;font-size:16px;color:#F6EFE3">${d.name}</b> <span style="color:#7FD8C8">${fmt(d.price)}</span>${d.alc ? '' : ' <small style="color:#7FD8C8">sem álcool</small>'}<br><small style="color:#CDBFA8">${recipeLine(d)}</small></div>`).join('')}</details>`
+      + (BAR.earn > 0 ? `<button id="mixCollect" style="margin-top:12px;padding:9px 14px;border-radius:9px;border:1px solid #D8A64A;background:#3B2214;color:#F6EFE3;font:600 13px Outfit,sans-serif">Coletar vendas · ${fmt(BAR.earn)}</button>` : '');
+  } else if (st === 1){
+    body = `<p class="sub">Escolha o copo</p>` + Object.entries(BAR_GLASSES).map(([k, g]) => chip(m.glass === k, 'data-gl', k, g.n)).join('');
+  } else if (st === 2){
+    body = BAR_ING_GROUPS.map(([gname, list]) => `<p class="sub" style="margin:8px 0 2px">${gname}</p>` + list.map(k => chip(m.ing.includes(k), 'data-ing', k, BAR_ING[k].n)).join('')).join('')
+      + (alc ? pickRow('Dose do destilado', BAR_DOSE, m.dose, 'data-dose') : '<p class="sub" style="margin-top:10px;color:#7FD8C8">Sem destilado: drinque sem álcool</p>');
+  } else if (st === 3){
+    body = pickRow('Gelo', BAR_ICE, m.ice, 'data-ice') + pickRow('Método de preparo', BAR_METHOD, m.method, 'data-met');
+  } else if (st === 4){
+    body = `<p class="sub">Acessórios e guarnições · pode escolher vários</p>` + Object.entries(BAR_ACC).map(([k, v]) => chip(m.acc.includes(k), 'data-acc', k, v)).join('');
+  } else {
+    const ready = m.glass && m.ing.length && m.ice && m.method, rec = m.ing.length ? matchRecipe(m) : null, ev = ready && sel ? evalDrink(m, sel) : null;
+    const holding = CARRY && CARRY.kind === 'drink';
+    const evCol = ev ? (ev.fails.length ? '#F29A8E' : ev.score >= 85 ? '#7FD8C8' : ev.score >= 50 ? '#F2C94C' : '#F29A8E') : '';
+    body = `<p class="sub">Conferência antes de servir</p>
+      <p style="margin:6px 0;font:400 20px Gloock,Georgia,serif">${rec ? rec.name : m.ing.length ? 'Drinque autoral' : 'Nada no copo ainda'}</p>
+      ${ev ? `<div class="repbar" style="margin:8px 0"><span style="left:0;width:${ev.score}%"></span></div>
+        <p style="margin:0;color:${evCol};font:700 14px Outfit,sans-serif">${ev.fails.length ? 'O cliente vai recusar: ' + ev.fails[0] : 'Qualidade prevista para ' + (sel.guest.profile ? sel.guest.profile.name : 'o hóspede') + ': ' + ev.score + '/100'}</p>
+        ${ev.notes.length ? `<ul style="margin:6px 0 0 18px;padding:0;color:#CDBFA8;font:500 13px Outfit,sans-serif">${ev.notes.slice(0, 6).map(t => `<li>${t}</li>`).join('')}</ul>` : ''}`
+      : `<p class="sub">${sel ? 'Complete copo, bebidas, gelo e preparo para ver a avaliação.' : 'Selecione uma comanda na etapa 1 para ver a avaliação do cliente.'}</p>`}
       <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">
-        <button id="mixMake" ${holding ? 'disabled' : ''} style="flex:1;min-width:140px;padding:10px;border-radius:9px;border:1px solid #D8A64A;background:#D8A64A;color:#2A1B14;font:700 14px Outfit,sans-serif">${holding ? 'Entregue o drinque que está levando' : 'Preparar drinque'}</button>
-        <button id="mixClear" style="padding:10px 14px;border-radius:9px;border:1px solid #6E5A44;background:transparent;color:#F6EFE3;font:600 13px Outfit,sans-serif">Limpar</button></div>
-      <p id="mixMsg" style="min-height:20px;margin-top:8px;color:#CDBFA8;font:500 13px Outfit,sans-serif"></p></div>`;
-  const B_ = $('mixBody');
-  B_.querySelectorAll('[data-ing]').forEach(b => b.onclick = () => { const k = b.dataset.ing, i = m.ing.indexOf(k); if (i >= 0) m.ing.splice(i, 1); else m.ing.push(k); tone(700 + m.ing.length*40, .04, 'triangle', .05); renderMixer(); });
-  B_.querySelectorAll('[data-met]').forEach(b => b.onclick = () => { m.method = b.dataset.met; renderMixer(); });
-  B_.querySelectorAll('[data-gl]').forEach(b => b.onclick = () => { m.glass = b.dataset.gl; renderMixer(); });
-  B_.querySelectorAll('[data-gar]').forEach(b => b.onclick = () => { m.garnish = b.dataset.gar; renderMixer(); });
-  $('mixClear').onclick = () => { BARMIX.mix = {ing:[], method:null, glass:null, garnish:null}; renderMixer(); };
-  $('mixMake').onclick = () => makeDrink();
-  if ($('mixCollect')) $('mixCollect').onclick = () => { collectBar(); renderMixer(); };
+        <button id="mixMake" ${holding ? 'disabled' : ''} style="flex:1;min-width:160px;padding:11px;border-radius:9px;border:1px solid #D8A64A;background:#D8A64A;color:#2A1B14;font:700 14px Outfit,sans-serif">${holding ? 'Entregue o drinque que está levando' : 'Preparar e levar'}</button>
+        <button id="mixClear" style="padding:11px 14px;border-radius:9px;border:1px solid #6E5A44;background:transparent;color:#F6EFE3;font:600 13px Outfit,sans-serif">Jogar fora e recomeçar</button></div>
+      <p id="mixMsg" style="min-height:20px;margin-top:8px;color:#CDBFA8;font:500 13px Outfit,sans-serif"></p>`;
+  }
+  const nav = `<div style="display:flex;justify-content:space-between;gap:8px;margin-top:16px">
+    <button data-go="-1" ${st === 0 ? 'disabled' : ''} style="padding:9px 14px;border-radius:9px;border:1px solid #6E5A44;color:#F6EFE3;opacity:${st === 0 ? .4 : 1}">← Voltar</button>
+    ${st < MIX_STEPS.length - 1 ? `<button data-go="1" style="padding:9px 16px;border-radius:9px;background:#D8A64A;color:#2A1B14;font-weight:700">Próximo →</button>` : ''}</div>`;
+  $('mixBody').innerHTML = `<nav style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px">${tabs}</nav>${body}${nav}`;
+  const B_ = $('mixBody'), re = () => renderMixer();
+  B_.querySelectorAll('[data-step]').forEach(b => b.onclick = () => { BARMIX.step = +b.dataset.step; re(); });
+  B_.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { BARMIX.step = Math.max(0, Math.min(MIX_STEPS.length - 1, st + +b.dataset.go)); re(); });
+  B_.querySelectorAll('[data-ord]').forEach(b => b.onclick = () => { const o = BARMIX.orders.find(o => o.no === +b.dataset.ord); BARMIX.sel = BARMIX.sel === o ? null : o; tone(660, .05, 'triangle', .05); re(); });
+  B_.querySelectorAll('[data-gl]').forEach(b => b.onclick = () => { m.glass = b.dataset.gl; tone(1200, .05, 'sine', .05); re(); });
+  B_.querySelectorAll('[data-ing]').forEach(b => b.onclick = () => { const k = b.dataset.ing, i = m.ing.indexOf(k); if (i >= 0) m.ing.splice(i, 1); else m.ing.push(k); tone(700 + m.ing.length*40, .04, 'triangle', .05); re(); });
+  B_.querySelectorAll('[data-dose]').forEach(b => b.onclick = () => { m.dose = +b.dataset.dose; re(); });
+  B_.querySelectorAll('[data-ice]').forEach(b => b.onclick = () => { m.ice = b.dataset.ice; tone(1500, .03, 'square', .02); re(); });
+  B_.querySelectorAll('[data-met]').forEach(b => b.onclick = () => { m.method = b.dataset.met; re(); });
+  B_.querySelectorAll('[data-acc]').forEach(b => b.onclick = () => { const k = b.dataset.acc, i = m.acc.indexOf(k); if (i >= 0) m.acc.splice(i, 1); else m.acc.push(k); tone(900, .04, 'triangle', .05); re(); });
+  if ($('mixClear')) $('mixClear').onclick = () => { BARMIX.mix = freshMix(); BARMIX.step = 1; re(); };
+  if ($('mixMake')) $('mixMake').onclick = () => makeDrink();
+  if ($('mixCollect')) $('mixCollect').onclick = () => { collectBar(); re(); };
+  renderMixSide(); mixUpdate3D();
+}
+function renderMixSide(){
+  const m = BARMIX.mix, sel = BARMIX.sel, alc = m.ing.some(k => BAR_ING[k].alc);
+  const row = (k, v) => `<div style="display:flex;justify-content:space-between;gap:10px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.06)"><small style="color:#CDBFA8">${k}</small><small style="text-align:right">${v}</small></div>`;
+  $('mixSide').innerHTML = `<p class="sub" style="margin:10px 0 4px">No copo agora</p>
+    ${row('Copo', m.glass ? BAR_GLASSES[m.glass].n : '—')}${row('Bebidas', m.ing.length ? m.ing.map(k => BAR_ING[k].n).join(', ') : '—')}${row('Dose', alc ? BAR_DOSE[m.dose] : 'sem álcool')}${row('Gelo', m.ice ? BAR_ICE[m.ice] : '—')}${row('Preparo', m.method ? BAR_METHOD[m.method] : '—')}${row('Acessórios', m.acc.length ? m.acc.map(a => BAR_ACC[a]).join(', ') : '—')}
+    ${sel ? `<p class="sub" style="margin:12px 0 4px">Ficha técnica · ${sel.drink.name}</p><small style="color:#CDBFA8">${recipeLine(sel.drink)}</small>${sel.notes.length ? `<p style="margin:6px 0 0;color:#F2C94C;font:600 12.5px Outfit,sans-serif">${sel.notes.map(t => '• ' + t).join('<br>')}</p>` : ''}` : '<p class="sub" style="margin-top:12px">Sem comanda selecionada</p>'}`;
+}
+/* Prévia 3D: um segundo WebGLRenderer só para o copo, com luz de estúdio (RoomEnvironment) girando devagar */
+const MIX3D = {r:null, s:null, cam:null, model:null, raf:0};
+function mixInit3D(){
+  if (MIX3D.r !== null) return MIX3D.r;
+  try {
+    const r = new THREE.WebGLRenderer({canvas:$('mixCanvas'), antialias:true, alpha:true});
+    r.outputEncoding = THREE.sRGBEncoding; r.toneMapping = THREE.ACESFilmicToneMapping; r.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+    const s = new THREE.Scene(), cam = new THREE.PerspectiveCamera(28, 1, .01, 10);
+    s.add(new THREE.HemisphereLight(0xFFF4E0, 0x3A2A20, .9)); const dl = new THREE.DirectionalLight(0xFFFFFF, 1.6); dl.position.set(.6, 1.2, .9); s.add(dl);
+    try { s.environment = new THREE.PMREMGenerator(r).fromScene(new THREE.RoomEnvironment(), .04).texture; } catch(e){ /* sem reflexo de estúdio */ }
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(.16, .16, .02, 48), new THREE.MeshStandardMaterial({color:0x6A4630, roughness:.4})); base.position.y = -.01; s.add(base);
+    Object.assign(MIX3D, {r, s, cam});
+  } catch(e){ MIX3D.r = false; }
+  return MIX3D.r;
+}
+function mixUpdate3D(){
+  if (!mixInit3D()) return;
+  if (MIX3D.model) MIX3D.s.remove(MIX3D.model);
+  MIX3D.model = drinkModel(BARMIX.mix); MIX3D.s.add(MIX3D.model);
+}
+function mixFrame(){
+  if (!BARMIX.open || !MIX3D.r){ MIX3D.raf = 0; return; }
+  const r = MIX3D.r, cv = r.domElement, w = cv.clientWidth, h = cv.clientHeight, pr = r.getPixelRatio();
+  if (w && h && (cv.width !== Math.round(w*pr) || cv.height !== Math.round(h*pr))){ r.setSize(w, h, false); MIX3D.cam.aspect = w/h; MIX3D.cam.updateProjectionMatrix(); }
+  MIX3D.cam.position.set(0, .2, .62); MIX3D.cam.lookAt(0, .1, 0);
+  if (MIX3D.model && !RM.matches) MIX3D.model.rotation.y += .008;
+  r.render(MIX3D.s, MIX3D.cam);
+  MIX3D.raf = requestAnimationFrame(mixFrame);
 }
 function makeDrink(){
-  const m = BARMIX.mix, same = (a, b) => a.length === b.length && a.every(x => b.includes(x));
-  const match = DRINKS.find(d => same(m.ing, d.ing) && d.method === m.method && d.glass === m.glass && d.garnish === m.garnish);
-  const msg = $('mixMsg');
-  if (!match){
-    // dica comparando com o pedido mais antigo
-    const target = (BARMIX.orders[0] || {}).drink || DRINKS.find(d => d.ing.filter(x => m.ing.includes(x)).length >= 2);
-    let hint = 'Essa combinação não está no Menu Especial.';
-    if (target){
-      const miss = target.ing.filter(x => !m.ing.includes(x)).map(k => BAR_ING[k]), extra = m.ing.filter(x => !target.ing.includes(x)).map(k => BAR_ING[k]);
-      const parts = []; if (miss.length) parts.push('falta ' + miss.join(', ')); if (extra.length) parts.push('sobra ' + extra.join(', '));
-      if (m.method !== target.method) parts.push('método: ' + BAR_METHOD[target.method]); if (m.glass !== target.glass) parts.push('copo: ' + BAR_GLASSES[target.glass]); if (m.garnish !== target.garnish) parts.push('guarnição: ' + BAR_GARNISH[target.garnish]);
-      hint = `Não ficou ${target.name}: ${parts.join(' · ')}`;
-    }
-    msg.textContent = hint; msg.style.color = '#F29A8E'; SFX.error(); return;
-  }
+  const m = BARMIX.mix, msg = $('mixMsg'), miss = [];
+  if (!m.glass) miss.push('o copo'); if (!m.ing.length) miss.push('as bebidas'); if (!m.ice) miss.push('o gelo'); if (!m.method) miss.push('o preparo');
+  if (miss.length){ if (msg){ msg.textContent = 'Falta escolher ' + miss.join(', '); msg.style.color = '#F29A8E'; } SFX.error(); return; }
   // preparo: som de acordo com o método
   if (m.method === 'bater') for (let i = 0; i < 8; i++) tone(180 + i*12, .08, 'sawtooth', .025, i*.06);
   else if (m.method === 'agitar') for (let i = 0; i < 6; i++) tone(1900 + (i % 2)*500, .05, 'square', .02, i*.09);
   else tone(520, .1, 'triangle', .06);
-  BARMIX.mix = {ing:[], method:null, glass:null, garnish:null};
-  const order = BARMIX.orders.find(o => o.drink.id === match.id);
-  setCarry({kind:'drink', drink:match, order});
+  const rec = matchRecipe(m), sel = BARMIX.sel, mix = {ing:m.ing.slice(), dose:m.dose, glass:m.glass, ice:m.ice, method:m.method, acc:m.acc.slice()};
+  const drink = {id:rec ? rec.id : 'autoral', name:rec ? rec.name : 'Drinque autoral', price:rec ? rec.price : 20, color:mixColor(m.ing)};
+  BARMIX.mix = freshMix(); BARMIX.step = 0;
+  setCarry({kind:'drink', drink, mix, order:sel});
   closeMixer(false);
-  toast(order ? `${match.name} pronto · leve até a espreguiçadeira ${order.lounger.i + 1}` : `${match.name} pronto · ninguém pediu esse agora`, order ? 'good' : '');
+  toast(sel ? `${drink.name} pronto · leve até a espreguiçadeira ${sel.lounger.i + 1}` : `${drink.name} pronto · entregue a quem pediu`, 'good');
 }
-function openMixer(){ if (!G.upg.bar) return; pcOpen = true; BARMIX.open = true; MIX_EL.hidden = false; renderMixer(); if (controls.isLocked) controls.unlock(); }
+function openMixer(){
+  if (!G.upg.bar) return;
+  pcOpen = true; BARMIX.open = true; MIX_EL.hidden = false;
+  if (!BARMIX.orders.includes(BARMIX.sel)) BARMIX.sel = BARMIX.orders[0] || null;
+  renderMixer();
+  if (MIX3D.r && !MIX3D.raf) MIX3D.raf = requestAnimationFrame(mixFrame);
+  if (controls.isLocked) controls.unlock();
+}
 function closeMixer(fromKey){ BARMIX.open = false; MIX_EL.hidden = true; closePC(fromKey); }
 $('mixClose').onclick = () => closeMixer(false);
 // quadro-negro com o Menu Especial ao lado do bar
@@ -6380,7 +7026,7 @@ $('mixClose').onclick = () => closeMixer(false);
     g.fillStyle = '#1F2622'; g.fillRect(0, 0, s, h); g.strokeStyle = '#C9A04A'; g.lineWidth = 10; g.strokeRect(10, 10, s - 20, h - 20);
     g.fillStyle = '#F6EFE3'; g.textAlign = 'center'; g.font = '700 46px Gloock, Georgia, serif'; g.fillText('Menu Especial', s/2, 70);
     g.font = '500 20px Outfit, sans-serif'; g.fillStyle = '#7FD8C8'; g.fillText('POOL BAR · drinques da casa', s/2, 100);
-    g.textAlign = 'left'; DRINKS.forEach((d, i) => { const y = 150 + i*58; g.fillStyle = '#F6EFE3'; g.font = '600 26px Outfit, sans-serif'; g.fillText(d.name, 30, y); g.textAlign = 'right'; g.fillStyle = '#F2C94C'; g.fillText(fmt(d.price), s - 30, y); g.textAlign = 'left'; g.fillStyle = '#B8C4BC'; g.font = '400 17px Outfit, sans-serif'; g.fillText(d.tag, 30, y + 22); });
+    g.textAlign = 'left'; DRINKS.forEach((d, i) => { const y = 142 + i*37; g.fillStyle = '#F6EFE3'; g.font = '600 22px Outfit, sans-serif'; g.fillText(d.name + (d.alc ? '' : ' · sem álcool'), 30, y); g.textAlign = 'right'; g.fillStyle = '#F2C94C'; g.fillText(fmt(d.price), s - 30, y); g.textAlign = 'left'; });
   }, 640);
   const easel = new THREE.Group(); easel.position.set(20.3, 0, -16.2); easel.rotation.y = -Math.PI/2 - .5; scene.add(easel);
   for (const s of [-1, 1]){ const leg = B(.05, 1.9, .05, M(0x6A4630), s*.45, 0, 0, easel); leg.rotation.z = s*-.05; }
@@ -6390,6 +7036,204 @@ $('mixClose').onclick = () => closeMixer(false);
   solid(19.9, -16.6, 20.7, -15.8);
   interact(board, {label:() => '[E] Ver o Menu Especial do pool bar', ok:() => !!G.upg.bar, action:() => openMixer()});
 }
+
+/* Pool bar · acabamento: garrafas de verdade no back-bar (perfis do bar da sala de jogos), fita de LED nas prateleiras,
+   taças penduradas, tábua de frutas, coqueteleira, dosador, balde de gelo e arandelas Barn Lamp (modelo glTF dos
+   exemplos do three.js) nas colunas do quiosque */
+{ const g = BAR.g, types = ['gin', 'vodka', 'liqueur', 'wine', 'champ'];
+  const cols = [[0xCFE6DA, 0xF2F6F0], [0xEAF2F8, null], [0x6A3A1E, 0x9A5A18], [0x2A4A2A, 0x5A1020], [0x2A3A1E, 0xE8D9A8]];
+  for (const [row, y] of [[0, .99], [1, 1.39]]) for (let i = 0; i < 10; i++){ const t = (i + row*2) % 5; bottle(types[t], cols[t][0], cols[t][1], i + row*3, g, 1.2, y, -1.1 + i*.245, {ry:-Math.PI/2}); }
+  const led = new THREE.MeshBasicMaterial({color:0xFFC27A});
+  for (const y of [.99, 1.39]) B(.015, .01, 2.5, led, 1.03, y - .012, 0, g, false);
+  lamp(BAR.x + .9, 1.7, BAR.z, 0xFFB070, .5, 4);
+  // taças de cabeça para baixo num porta-taças de madeira sobre o balcão
+  B(.32, .03, 1.3, MAT.woodDark, .55, 2.17, 0, g, false);
+  const wine = LATHE(BAR_GLASSES.balao.p, 24), glassM = GLASS(0xF4FAFC, .25);
+  for (const dz of [-.5, -.25, 0, .25, .5]) for (const dx of [.45, .65]){ const w = new THREE.Mesh(wine, glassM); w.rotation.x = Math.PI; w.position.set(dx, 2.17, dz); w.renderOrder = 2; g.add(w); }
+  // tábua com frutas, coqueteleira, dosador e balde de gelo no tampo (lado de dentro do balcão)
+  const at = (a, r) => [Math.cos(a)*r, -Math.sin(a)*r], topY = 1.18;
+  { const [x, z] = at(Math.PI*.8, 1.62), b = B(.32, .02, .2, M(0x9A6E45, {roughness:.6}), x, topY, z, g); b.rotation.y = Math.PI*.8 + Math.PI/2;
+    [[0x6BA82A, .026, -.08, -.03], [0x6BA82A, .026, -.03, .04], [0xF28A1E, .034, .07, 0]].forEach(([c, r, dx, dz]) => SPH(r, M(c, {roughness:.5}), x + dx, topY + .02 + r, z + dz, g, 14));
+    CY(.024, .024, .012, M(0xC8E070, {roughness:.4}), x + .02, topY + .02, z - .06, g, 16); }
+  { const [x, z] = at(Math.PI*1.2, 1.6), st = M(0xD6DCE2, {metalness:1, roughness:.18});
+    mesh(LATHE([[0,0],[.034,0],[.036,.01],[.046,.16],[0,.16]], 24), st, x, topY, z, g);
+    mesh(LATHE([[0,0],[.018,0],[.02,.004],[.026,.05],[0,.05]], 16), st, x + .1, topY, z + .05, g); }
+  { const [x, z] = at(Math.PI, 1.62), st = M(0xC6CDD4, {metalness:.9, roughness:.25});
+    mesh(LATHE([[0,0],[.07,0],[.09,.15],[.095,.16],[.088,.16],[.083,.02],[0,.02]], 28), st, x, topY, z, g);
+    const ice = PHYS(0xF2FAFF, {roughness:.1, transparent:true, opacity:.6, clearcoat:1});
+    for (let i = 0; i < 9; i++){ const c = B(.022, .022, .022, ice, x + Math.cos(i*2.1)*.045*(i % 3), topY + .12 + (i % 2)*.012, z + Math.sin(i*2.1)*.045*(i % 3), g, false); c.rotation.set(i, i*.7, 0); } }
+  loadModel('barnLamp').then(tpl => {
+    if (!tpl) return;
+    tpl.traverse(o => { if (o.isMesh && /filament/i.test((o.material && o.material.name) || '')){ o.material.emissive = new THREE.Color(0xFFB060); o.material.emissiveIntensity = 2.5; } });
+    for (const a of [Math.PI/4, Math.PI*3/4, Math.PI*5/4, Math.PI*7/4]){ const m = tpl.clone(); m.scale.setScalar(1.5); m.position.set(Math.cos(a)*2.01, 2.15, Math.sin(a)*2.01); m.rotation.y = Math.atan2(-Math.cos(a), -Math.sin(a)); g.add(m); }
+  });
+}
+
+/* ============================================================
+   SONOPLASTIA · ambiência por zona (ar-condicionado, murmúrio, água, vento, trânsito, coifa e chapa), eventos
+   (pássaros, grilos, carros, taças, mergulhos, fliperama, telefone), música lounge de bossa, passos por piso para
+   o jogador e os NPCs com posição estéreo, portas e a voz da recepcionista (speechSynthesis em português).
+   O áudio só começa no primeiro clique ou tecla (regra dos navegadores). M liga e desliga o som.
+   ============================================================ */
+const SOUND = {on:false, layers:{}, last:null, stepD:0, foot:0, q:0, idle:0, ev:{bird:3, car:6, clink:2, splash:5, arcade:3, phone:40, queue:0}};
+const RECEP_TIPS = ['Precisa de algo? É só tocar a campainha', 'O restaurante fica à direita do lobby', 'A piscina e o pool bar ficam nos fundos',
+  'A escada para os andares fica logo ali', 'Hoje o pool bar tem drinques especiais!', 'O café da manhã é servido no restaurante'];
+function zoneMix(z){
+  if (/Lobby/.test(z)) return {crowd:.05, hvac:.04, water:0, wind:0, traffic:.012, kitchen:0, music:.55, verb:.32};
+  if (/Restaurante/.test(z)) return {crowd:.07, hvac:.035, water:0, wind:0, traffic:0, kitchen:.025, music:.4, verb:.2};
+  if (/Cozinha/.test(z)) return {crowd:.02, hvac:.03, water:0, wind:0, traffic:0, kitchen:.11, music:.12, verb:.18};
+  if (/Piscina/.test(z)) return {crowd:.035, hvac:0, water:.12, wind:.05, traffic:.008, kitchen:0, music:.4, verb:.03};
+  if (/Entrada/.test(z)) return {crowd:.02, hvac:0, water:0, wind:.05, traffic:.09, kitchen:0, music:.12, verb:.05};
+  if (/Jardim/.test(z)) return {crowd:.01, hvac:0, water:.03, wind:.07, traffic:.03, kitchen:0, music:.08, verb:.03};
+  if (/Sala de jogos/.test(z)) return {crowd:.04, hvac:.035, water:0, wind:0, traffic:0, kitchen:0, music:.2, verb:.12};
+  if (/Quarto/.test(z)) return {crowd:0, hvac:.03, water:0, wind:0, traffic:.01, kitchen:0, music:.1, verb:.06};
+  return {crowd:.015, hvac:.035, water:0, wind:0, traffic:.005, kitchen:0, music:.18, verb:.14};
+}
+function soundStart(){
+  const a = audio(); if (!a || SOUND.on) return; SOUND.on = true;
+  const L = SOUND.layers;
+  const layer = name => { const g = a.createGain(); g.gain.value = 0; g.connect(a.amb); return L[name] = g; };
+  const src = (o, out) => { const sr = a.createBufferSource(); sr.buffer = o.brown ? a.brown : a.noise; sr.loop = true; sr.playbackRate.value = o.rate || 1;
+    const f = a.createBiquadFilter(); f.type = o.type || 'lowpass'; f.frequency.value = o.f; f.Q.value = o.q ?? .7;
+    const g = a.createGain(); g.gain.value = o.vol ?? 1; sr.connect(f); f.connect(g); g.connect(out); sr.start(0, Math.random()*1.9); return {f, g}; };
+  const lfo = (param, rate, depth) => { const o = a.createOscillator(), d = a.createGain(); o.frequency.value = rate; d.gain.value = depth; o.connect(d); d.connect(param); o.start(); };
+  const hvac = layer('hvac'); src({brown:true, f:260}, hvac); src({f:120, vol:.3}, hvac);
+  const crowd = layer('crowd');
+  [[320, .31], [650, .47], [1150, .73], [2100, 1.1]].forEach(([f, r], i) => { const n = src({type:'bandpass', f, q:1.6, vol:.5 - i*.08, rate:.9 + i*.07}, crowd); lfo(n.g.gain, r, .35); lfo(n.f.frequency, r*.6, f*.25); });
+  const water = layer('water'); { const w = src({f:650, q:.5}, water); lfo(w.g.gain, .17, .45); lfo(w.f.frequency, .09, 250); const w2 = src({type:'highpass', f:2600, vol:.25}, water); lfo(w2.g.gain, .37, .2); }
+  const wind = layer('wind'); { const w = src({brown:true, type:'bandpass', f:500, q:.6, vol:1.4}, wind); lfo(w.f.frequency, .06, 260); lfo(w.g.gain, .11, .6); }
+  const traffic = layer('traffic'); src({brown:true, f:170, vol:1.6}, traffic);
+  const kitchen = layer('kitchen');
+  [[118, .5], [236, .18], [354, .06]].forEach(([f, v]) => { const o = a.createOscillator(), g = a.createGain(); o.frequency.value = f; g.gain.value = v; o.connect(g); g.connect(kitchen); o.start(); });
+  src({f:900, vol:.8}, kitchen);
+  const sizzle = layer('sizzle'); { const z = src({type:'highpass', f:3800, vol:.8}, sizzle); lfo(z.g.gain, 13, .5); lfo(z.f.frequency, 3.1, 900); }
+  MUSIC.gain = a.createGain(); MUSIC.gain.gain.value = 0; MUSIC.gain.connect(a.mus); MUSIC.next = a.currentTime + .3;
+}
+addEventListener('pointerdown', soundStart); addEventListener('keydown', soundStart);
+addEventListener('keydown', e => {
+  if (e.code !== 'KeyM' || e.repeat || pcOpen) return;
+  AUDIO_OPT.muted = !AUDIO_OPT.muted;
+  if (AC) AC.master.gain.setTargetAtTime(AUDIO_OPT.muted ? 0 : AUDIO_OPT.vol, AC.currentTime, .05);
+  if (AUDIO_OPT.muted && window.speechSynthesis) speechSynthesis.cancel();
+  toast(AUDIO_OPT.muted ? 'Som desligado · aperte M para ligar' : 'Som ligado', '');
+});
+/* Música lounge (bossa a 96 bpm): baixo na tônica e na quinta, piano elétrico sincopado, ganzá, aro e vibrafone */
+const MUSIC = {gain:null, next:0, i:0};
+const MUS_PROG = [[38, [62, 65, 69, 72]], [43, [59, 62, 65, 69]], [36, [60, 64, 67, 71]], [45, [60, 64, 67, 69]],
+                  [38, [62, 65, 69, 72]], [43, [59, 62, 65, 71]], [40, [59, 64, 67, 71]], [45, [61, 64, 67, 69]]];
+const mf = m => 440*Math.pow(2, (m - 69)/12);
+function musicTick(a){
+  if (!MUSIC.gain) return;
+  const e = 60/96/2;
+  if (MUSIC.next < a.currentTime) MUSIC.next = a.currentTime + .05;
+  while (MUSIC.next < a.currentTime + .25){
+    const t = MUSIC.next - a.currentTime, step = MUSIC.i % 16, [bass, ch] = MUS_PROG[Math.floor(MUSIC.i/16) % MUS_PROG.length], o = {dest:MUSIC.gain};
+    if (MUSIC.gain.gain.value > .002){
+      if (step === 0 || step === 11) tone(mf(bass), .55, 'sine', .22, t, o);
+      if (step === 6) tone(mf(bass + 7), .45, 'sine', .18, t, o);
+      if ([0, 3, 6, 10, 13].includes(step)) ch.forEach(m => { tone(mf(m), 1.1, 'sine', .045, t, {dest:MUSIC.gain, att:.012}); tone(mf(m)*2, .35, 'sine', .01, t, o); });
+      sfxNoise(.05, {type:'highpass', f:7000, vol:step % 2 ? .02 : .035, delay:t, dest:MUSIC.gain});
+      if ([0, 3, 6, 10, 12].includes(step)) sfxNoise(.03, {f:1800, q:3, vol:.05, delay:t, dest:MUSIC.gain});
+      if (step % 4 === 2 && Math.random() < .35){ const m = pick(ch) + 12; tone(mf(m), 1.6, 'sine', .035, t, o); tone(mf(m)*4, .25, 'sine', .006, t, o); }
+    }
+    MUSIC.next += e; MUSIC.i++;
+  }
+}
+/* Passos: o piso decide o timbre (mármore estala, carpete abafa, grama farfalha) */
+function surfaceAt(x, z, lv){
+  if (lv) return x <= -8 ? 'wood' : 'carpet';
+  if (x > -8 && x < 8 && z > -6 && z <= 6) return 'marble';
+  if (z > 6) return 'stone';
+  if (x <= -8 && x > -26 && Math.abs(z) < 10) return Math.abs(z) < 2 ? 'carpet' : 'wood';
+  if (x >= 8 && x < 28 && z > -8 && z < 8) return 'tile';
+  if (z < -8 && x > -1 && x < 23 && z > -27) return 'stone';
+  return 'grass';
+}
+const STEP = {
+  marble(v, o){ sfxNoise(.045, Object.assign({type:'highpass', f:2200, vol:.22*v}, o)); tone(160*(.9 + Math.random()*.2), .06, 'sine', .12*v, 0, Object.assign({to:80}, o)); },
+  tile(v, o){ sfxNoise(.04, Object.assign({f:2600, q:1.1, vol:.2*v}, o)); tone(140, .05, 'sine', .1*v, 0, Object.assign({to:80}, o)); },
+  wood(v, o){ sfxNoise(.06, Object.assign({f:900, q:1.3, vol:.2*v}, o)); tone(105, .09, 'sine', .14*v, 0, Object.assign({to:70}, o)); },
+  carpet(v, o){ sfxNoise(.08, Object.assign({type:'lowpass', f:520, vol:.22*v, att:.01}, o)); },
+  stone(v, o){ sfxNoise(.06, Object.assign({f:1500, q:.7, vol:.2*v}, o)); sfxNoise(.03, Object.assign({type:'highpass', f:4500, vol:.05*v, delay:.02}, o)); },
+  grass(v, o){ sfxNoise(.13, Object.assign({f:3200, f2:1600, q:.6, vol:.12*v, att:.02}, o)); },
+};
+function stepSound(surface, v, pan){ (STEP[surface] || STEP.stone)(v*(.85 + Math.random()*.3), pan ? {pan} : {}); }
+const _sv = new THREE.Vector3(), _sr = new THREE.Vector3();
+function spatial(p){
+  const c = camera.position, dx = p.x - c.x, dz = p.z - c.z, d = Math.hypot(dx, dz, (p.y - c.y)*.5);
+  if (d > 14) return null;
+  camera.getWorldDirection(_sv); _sr.set(-_sv.z, 0, _sv.x).normalize();
+  return {vol:1/(1 + d*d*.12), pan:d > .3 ? (dx*_sr.x + dz*_sr.z)/d*.8 : 0};
+}
+function npcStep(n){
+  if (!SOUND.on || (n.level || 0) !== PLAYER_LEVEL) return;
+  const sp = spatial(n.g.position); if (!sp) return;
+  stepSound(surfaceAt(n.g.position.x, n.g.position.z, n.level || 0), .5*sp.vol, sp.pan);
+}
+function doorSlide(pos, open){ if (!SOUND.on) return; const sp = spatial(pos); if (!sp) return;
+  sfxNoise(.9, {f:open ? 500 : 700, f2:open ? 900 : 380, q:.8, vol:.08*sp.vol, att:.15, pan:sp.pan}); tone(open ? 880 : 660, .12, 'sine', .02*sp.vol, 0, {pan:sp.pan}); }
+function doorSwing(pos){ if (!SOUND.on) return; const sp = spatial(pos); if (!sp) return;
+  sfxNoise(.28, {f:420, f2:240, q:3, vol:.07*sp.vol, pan:sp.pan}); tone(110, .12, 'sine', .06*sp.vol, .22, {pan:sp.pan}); }
+function birdSong(){ const k = 2 + Math.floor(Math.random()*4), f = 2400 + Math.random()*2200, pan = Math.random()*1.6 - .8;
+  for (let i = 0; i < k; i++) tone(f*(.9 + Math.random()*.25), .07 + Math.random()*.05, 'sine', .018, i*.11, {to:f*(1.2 + Math.random()*.4), pan, dest:AC.amb}); }
+function crickets(){ const pan = Math.random()*1.4 - .7; for (let i = 0; i < 6; i++) tone(4400, .03, 'sine', .012, i*.06, {pan, dest:AC.amb}); }
+function carPass(level){ sfxNoise(3.2, {brown:true, type:'lowpass', f:180, f2:700, q:.7, vol:Math.max(.03, level*.9), att:1.4, pan:Math.random() < .5 ? -.6 : .6, dest:AC.amb}); }
+function arcadeBlip(){ const b = pick([523, 659, 784, 988]); for (let i = 0; i < 4; i++) tone(b*Math.pow(1.26, i), .07, 'square', .02, i*.07, {pan:-.5, dest:AC.amb}); }
+function phoneRing(){ for (let r = 0; r < 2; r++) for (let k = 0; k < 16; k++){ tone(440, .05, 'sine', .035, r*1.6 + k*.05, {pan:.35}); tone(480, .05, 'sine', .035, r*1.6 + k*.05, {pan:.35}); } }
+/* Voz da recepcionista: voz feminina em português do navegador, quando o jogador está perto do balcão */
+const VOICE = {v:null, picked:false};
+function pickVoice(){
+  if (VOICE.picked || !window.speechSynthesis) return VOICE.v;
+  const vs = speechSynthesis.getVoices(); if (!vs.length) return null; VOICE.picked = true;
+  const pt = vs.filter(v => /^pt[-_]BR/i.test(v.lang)).concat(vs.filter(v => /^pt/i.test(v.lang) && !/^pt[-_]BR/i.test(v.lang)));
+  VOICE.v = pt.find(v => /francisca|maria|luciana|thalita|vit[oó]ria|female|feminina|google portugu/i.test(v.name)) || pt[0] || null;
+  return VOICE.v;
+}
+function speak(text){
+  if (AUDIO_OPT.muted || !window.speechSynthesis || !SOUND.on) return;
+  const v = pickVoice(); if (!v) return;
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(text); u.voice = v; u.lang = v.lang; u.rate = 1.04; u.pitch = 1.12; u.volume = Math.min(1, .85*AUDIO_OPT.vol); speechSynthesis.speak(u); } catch(e){ /* sem voz: fica o balão */ }
+}
+function recepTalk(text){
+  const r = NPCS.find(n => n.kind === 'recep'); if (!r) return false;
+  say(r, text, Math.max(3.2, text.length*.07));
+  const c = camera.position;
+  if (PLAYER_LEVEL === 0 && Math.hypot(c.x - r.g.position.x, c.z - r.g.position.z) < 11) speak(text);
+  return true;
+}
+if (window.speechSynthesis) speechSynthesis.onvoiceschanged = () => { VOICE.picked = false; pickVoice(); };
+ANIM.push((dt) => {
+  if (!SOUND.on || !AC) return;
+  const a = AC, now = a.currentTime, c = camera.position, z = zoneAt(c.x, c.z), hour = 8 + 14*Math.min(1, G.t/G.dayLen), L = SOUND.layers;
+  const mix = zoneMix(z), crowdK = .4 + .6*Math.min(1, (G.guests ? G.guests.length : 0)/6), duck = pcOpen ? .6 : 1, dts = dt || .016;
+  const set = (g, v) => { if (g) g.gain.setTargetAtTime(v, now, .8); };
+  set(L.hvac, mix.hvac*duck); set(L.crowd, mix.crowd*crowdK*duck); set(L.water, mix.water*duck); set(L.wind, mix.wind*duck);
+  set(L.traffic, mix.traffic*duck); set(L.kitchen, mix.kitchen*duck); set(L.sizzle, STOVE.queue.length ? mix.kitchen*.6 : 0);
+  set(MUSIC.gain, mix.music*.55); a.send.gain.setTargetAtTime(mix.verb, now, .8);
+  musicTick(a);
+  const ev = SOUND.ev; for (const k in ev) ev[k] -= dts;
+  if (/Piscina|Jardim|Entrada/.test(z) && ev.bird <= 0){ ev.bird = 2 + Math.random()*5; if (hour < 19) birdSong(); else crickets(); }
+  if (/Entrada|Jardim|Piscina|Lobby/.test(z) && ev.car <= 0){ ev.car = 7 + Math.random()*14; carPass(mix.traffic); }
+  if (/Cozinha|Restaurante/.test(z) && ev.clink <= 0){ ev.clink = 1.2 + Math.random()*3; bellTone(2800 + Math.random()*2200, .3, /Cozinha/.test(z) ? .03 : .018, 0, {pan:Math.random()*1.4 - .7, dest:a.amb}); }
+  if (/Piscina/.test(z) && ev.splash <= 0){ ev.splash = 4 + Math.random()*7; sfxNoise(.6, {f:1400, f2:350, q:.5, vol:.06, att:.01, pan:Math.random()*1.4 - .7, dest:a.amb}); }
+  if (/Sala de jogos/.test(z) && ev.arcade <= 0){ ev.arcade = 3 + Math.random()*5; arcadeBlip(); }
+  // recepção: telefone, boas-vindas a quem chega na fila e dicas para quem fica por perto
+  const rec = NPCS.find(n => n.kind === 'recep');
+  if (rec){
+    if (/Lobby/.test(z) && ev.phone <= 0){ ev.phone = 70 + Math.random()*80; phoneRing(); setTimeout(() => recepTalk(`Grand Resort, ${greetHour().toLowerCase()}! Em que posso ajudar?`), 2600); }
+    const q = G.queue.length;
+    if (q > SOUND.q && ev.queue <= 0){ ev.queue = 25; recepTalk(pick(['Bem-vindo ao Grand Resort! Já atendo você', 'Olá! Um instante, por favor, já faço seu check-in'])); }
+    SOUND.q = q;
+    const d = Math.hypot(c.x - rec.g.position.x, c.z - rec.g.position.z);
+    if (d < 4 && PLAYER_LEVEL === 0 && !pcOpen){ SOUND.idle += dts; if (SOUND.idle > 16){ SOUND.idle = 0; recepTalk(pick(RECEP_TIPS)); } } else SOUND.idle = 0;
+  }
+  // passos do jogador (ignora saltos de câmera: showroom, minijogos, teletransporte)
+  if (SOUND.last){
+    const d = Math.hypot(c.x - SOUND.last.x, c.z - SOUND.last.z);
+    if (d < .5 && !pcOpen && !G.paused){ SOUND.stepD += d; if (SOUND.stepD > .72){ SOUND.stepD = 0; SOUND.foot = -SOUND.foot || .12; stepSound(surfaceAt(c.x, c.z, PLAYER_LEVEL), .55, SOUND.foot); } }
+  } else SOUND.last = new THREE.Vector3();
+  SOUND.last.copy(c);
+});
 
 perfInit();
 ANIM.push((dt) => perfFrame(dt));
@@ -6434,7 +7278,7 @@ for (const [lv, def] of Object.entries(GFX.LEVELS)){
 GFX.finish([[upMat.wall, 'beige_wall_001', {tile:.45, bump:.018, tone:.28}], [upMat.white, 'white_stucco', {tile:.5, bump:.012, tone:.18}],
             [LOBBY_RUNNER, 'velour_velvet', {tile:1.5, bump:.01, tone:.45}]]);
 /* Estofados compartilhados (sofás do lobby, poltronas, bancos): material fotográfico real com UV em metros */
-{ const up = [[MAT.leather, 'brown_leather'], [MAT.velvet, 'velour_velvet'], [MAT.linen, 'rough_linen']];
+{ const up = [[MAT.leather, 'brown_leather'], [MAT.velvet, 'velour_velvet'], [MAT.linen, 'rough_linen'], [LOBBY_VELVET, 'wool_boucle'], [LOBBY_ACCENT, 'velour_velvet']];
   for (const [m, slug] of up) setTexture(m, slug);
   const set = new Set(up.map(u => u[0]));
   scene.traverse(o => { if (o.isMesh && set.has(o.material)) metricUV(o.geometry); }); }
