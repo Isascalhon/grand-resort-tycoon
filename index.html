@@ -12,6 +12,9 @@
 <script>
   tailwind.config = {theme:{extend:{colors:{walnut:'#2A1B14','walnut-2':'#3B271C',brass:'#D8A64A',linen:'#F6EFE3',lagoon:'#2BB3B1',coral:'#E86A5A'},fontFamily:{display:['Gloock','Georgia','serif'],body:['Outfit','Segoe UI','sans-serif']}}}};
 </script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/objects/Reflector.js"></script>
@@ -82,6 +85,19 @@ body{background:var(--walnut);color:var(--linen);font-family:var(--font-body);us
 .keys{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:14px}
 kbd{font:600 12px var(--font-body);padding:3px 8px;border-radius:6px;background:var(--walnut-2);border:1px solid color-mix(in srgb,var(--brass) 35%,transparent);color:var(--linen);white-space:nowrap}
 button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+.auth{width:min(420px,100%);display:flex;flex-direction:column;gap:12px}
+.auth h1{margin:0}.auth .tabs2{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:rgba(0,0,0,.25);padding:4px;border-radius:12px}
+.auth .tabs2 button{padding:9px;border-radius:9px;color:var(--linen);font-weight:600}.auth .tabs2 button[aria-selected=true]{background:var(--brass);color:var(--walnut)}
+.auth form{display:flex;flex-direction:column;gap:10px}.auth label{display:flex;flex-direction:column;gap:5px;font-size:13px;color:#CDBFA8}
+.auth input{font:inherit;font-size:15px;padding:11px 12px;border-radius:10px;border:1px solid rgba(216,166,74,.35);background:rgba(255,255,255,.06);color:var(--linen);outline:none}
+.auth input:focus{border-color:var(--brass);box-shadow:0 0 0 3px rgba(216,166,74,.25)}
+.auth .pw{position:relative}.auth .pw input{width:100%;box-sizing:border-box;padding-right:64px}.auth .pw button{position:absolute;right:8px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--brass)}
+.auth .msg{min-height:18px;font-size:13px;margin:0}.auth .msg.bad{color:var(--coral)}.auth .msg.good{color:var(--lagoon)}
+.auth .link{background:none;color:var(--brass);text-decoration:underline;font-size:13px;align-self:flex-start;padding:0}
+.acct{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:#CDBFA8}.acct b{color:var(--linen)}.acct button{color:var(--brass);text-decoration:underline;font-size:13px}
+.rank{width:min(520px,100%);display:flex;flex-direction:column;gap:12px}.rank ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.rank li{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:rgba(255,255,255,.05)}
+.rank li.me{background:rgba(216,166,74,.22);outline:1px solid var(--brass)}.rank li i{font-style:normal;font-weight:700;color:var(--brass);text-align:center}.rank li b{font-variant-numeric:tabular-nums}
 .cta{background:var(--brass);color:var(--walnut);font-weight:700;font-size:16px;padding:13px 18px;border-radius:12px}
 .cta:hover{filter:brightness(1.08)}
 .gfxpick{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--linen-dim)}
@@ -255,9 +271,46 @@ body.sr-on .hud,body.sr-on .help,body.sr-on #ch,body.sr-on #prompt{display:none}
       <kbd>Esc</kbd><span>Pausar e soltar o mouse</span>
     </div>
     <div class="gfxpick" role="group" aria-label="Qualidade gráfica"><span>Gráficos</span><span id="gfxBtns"></span></div>
+    <div class="acct" id="acct" hidden></div>
     <button class="cta" id="play">Clique para jogar</button>
     <p class="note" id="lockNote">Se o navegador não liberar o mouse, o jogo entra no modo arrastar: segure o botão e arraste para olhar.</p>
     <button class="note" id="resetSave" hidden style="text-decoration:underline;color:var(--coral);align-self:flex-start">Apagar progresso salvo e começar do zero</button>
+  </div>
+</div>
+
+<div class="overlay" id="auth" hidden>
+  <div class="panel start auth" role="dialog" aria-label="Entrar no Grand Resort">
+    <small>Tycoon de hotel e restaurante</small>
+    <h1>Grand Resort <em>&amp;</em> Kitchen</h1>
+    <div class="tabs2" role="tablist"><button type="button" role="tab" id="tabLogin" aria-selected="true">Entrar</button><button type="button" role="tab" id="tabSignup" aria-selected="false">Criar conta</button></div>
+    <form id="fLogin" novalidate>
+      <label>E-mail<input type="email" id="lEmail" autocomplete="email" required></label>
+      <label>Senha<span class="pw"><input type="password" id="lPass" autocomplete="current-password" required><button type="button" data-eye="lPass">Mostrar</button></span></label>
+      <button class="cta" type="submit">Entrar e continuar de onde parei</button>
+      <button class="link" type="button" id="goForgot">Esqueci minha senha</button>
+    </form>
+    <form id="fSignup" novalidate hidden>
+      <label>Nome do gerente (aparece no ranking)<input type="text" id="sName" maxlength="20" autocomplete="nickname" required></label>
+      <label>E-mail<input type="email" id="sEmail" autocomplete="email" required></label>
+      <label>Senha (mínimo 6 caracteres)<span class="pw"><input type="password" id="sPass" autocomplete="new-password" required><button type="button" data-eye="sPass">Mostrar</button></span></label>
+      <label>Confirmar senha<input type="password" id="sPass2" autocomplete="new-password" required></label>
+      <button class="cta" type="submit">Criar conta e jogar</button>
+    </form>
+    <form id="fForgot" novalidate hidden>
+      <p class="note" style="margin:0">Informe o e-mail da sua conta. Enviaremos um link para você criar uma nova senha.</p>
+      <label>E-mail<input type="email" id="fEmail" autocomplete="email" required></label>
+      <button class="cta" type="submit">Enviar link de redefinição</button>
+      <button class="link" type="button" id="backLogin">Voltar para o login</button>
+    </form>
+    <p class="msg" id="authMsg" role="status" aria-live="polite"></p>
+  </div>
+</div>
+<div class="overlay modal" id="rank" hidden>
+  <div class="panel start rank" role="dialog" aria-label="Ranking dos gerentes">
+    <h2 style="margin:0">Ranking dos gerentes</h2>
+    <div class="tabs2 auth" style="width:100%" role="tablist"><button type="button" role="tab" id="rkMoney" aria-selected="true">Mais dinheiro</button><button type="button" role="tab" id="rkGuests" aria-selected="false">Mais hóspedes</button></div>
+    <ol id="rkList"></ol>
+    <button class="cta" type="button" id="rkClose">Fechar</button>
   </div>
 </div>
 
@@ -1048,7 +1101,7 @@ floor(-1.1,-2.85,1.1,6, LOBBY_RUNNER, .022);
 floor(-1.25,-2.95,1.25,6, M(0xD8A64A,{metalness:.6, roughness:.4}), .018);
 // parede da frente do lobby: guardada para a fachada de vidro mostrar o lobby de verdade (some, mas segue sólida)
 const LOBBY_FRONT_WALL = (n => { wallX(6, -8, 8, 5.2, MAT.wall, [[-1.5,1.5]], .2, 3.2); return occluders.slice(n); })(occluders.length);
-wallX(-6, -8, 8, 5, MAT.wall, [[4.5,7]]);
+wallX(-6, -8, 8, 5, MAT.wall, [[-6.2,-5],[4.5,7]]);
 wallZ(-8, -6, 6, 5, MAT.wall, [[-1.5,1.5]]);
 wallZ(8, -6, 6, 5.2, MAT.wall, [[-1.5,1.5]]);
 
@@ -1210,7 +1263,7 @@ ANIM.push((dt, t) => { if (RM.matches) return; crystals.forEach((m, i) => m.emis
    101/102 em x -17..-8 · 103/104 em x -26..-17 · norte = side -1
    ============================================================ */
 const wallpaper = M(0xFFFFFF, {map:rep(TEX.wallpaper,6,1.4), roughness:.9});
-floor(-26,-2,-8,2, floorMat(TEX.corridor,18,4,1,{roughness:1}));
+floor(-26,-2,-8,2, pbrMat('marbleCarrara',18,4,2.5), .012);   // mesmo mármore Carrara do lobby
 /* paredes do fundo (z ±10): cada quarto monta a sua, com a janela do nível atual (buildRoomInner) */
 wallZ(-26, -10, 10, 3.4, wallpaper);
 wallZ(-17, -10, -2, 3.4, wallpaper); wallZ(-17, 2, 10, 3.4, wallpaper);
@@ -1457,7 +1510,8 @@ function makeRoomShell(room){
 /* Acabamentos de fábrica por nível nos quartos do 2º andar (o térreo usa o padrão do catálogo) */
 const UPPER_BASE = {1:{}, 2:{floor:'nogueira', headboard:'caramelo', bedding:'areia', rug:'grafite'},
   3:{floor:'porcelanato', headboard:'musgo', bedding:'champanhe', armchair:'azul', walls:'offwhite', bedframe:'laca'}};
-const roomBase = room => room.upper ? UPPER_BASE[room.level] || {} : {};
+const GROUND_BASE = {2:{floor:'nogueira', headboard:'caramelo', bedding:'champanhe', rug:'grafite', walls:'offwhite'}};
+const roomBase = room => (room.upper ? UPPER_BASE : GROUND_BASE)[room.level] || {};
 ROOMS.forEach(makeRoomShell);
 ANIM.push((dt, t) => {
   BUBBLES.forEach(b => { b.position.y = b.userData.y0 + ((t*.35 + b.userData.ph) % 1) * .18; b.material.opacity = .9 - ((t*.35 + b.userData.ph) % 1) * .8; });
@@ -1499,7 +1553,7 @@ function upgradeRoom(room){
   if (G.money < c){ SFX.error(); toast(`Faltam ${fmt(c - G.money)} para esta obra`, 'bad'); return; }
   addMoney(-c, room.owned ? `Upgrade ${room.id} → ${LEVEL[room.level + 1]}` : `Compra do quarto ${room.id}`);
   if (!room.owned){ room.owned = true; room.level = 1; } else room.level++;
-  if (room.upper) initDecor(room, roomBase(room));   // 2º andar: cada nível chega com os seus acabamentos de fábrica
+  if (room.upper || room.level === 2) initDecor(room, roomBase(room));   // cada nível chega com os seus acabamentos de fábrica
   buildRoom(room); SFX.buy(); addRep(3);
   toast(`Quarto ${room.id} agora é ${LEVEL[room.level]}`, 'good');
 }
@@ -1539,37 +1593,14 @@ function buildRoomInner(room){
     return;
   }
   // janela no fundo (o Básico tem a sua própria, com cortinas, em furnishBasic)
-  if (L === 2 || L === 3){
-    // cortinas laterais sobre a janela real (linho na Executiva, veludo na Presidencial)
+  if (L === 3){
+    // cortinas laterais de veludo sobre a janela real
     const w = GROUND_WIN[L], cm = M(L === 3 ? 0x6A2F5E : 0xE8DCC8, {roughness:.95, side:THREE.DoubleSide});
     B(w.w + 1.2, .03, .03, MAT.black, w.u, w.top + .25, -7.7, g);
     for (const k of [-1, 1]) mesh(pleat(.45, w.top + .2), cm, w.u + k*(w.w/2 + .3), (w.top + .2)/2, -7.72, g, false);
   }
   if (L === 1) furnishRoom(room, g, S, GROUND_LAYOUT);
-  if (L === 2){
-    S(B(2.3,.4,2.4, M(0xE6DCCB), 0, 0, -6.7, g));
-    const hb = B(2.5,1.35,.14, M(0xCDBA98,{roughness:1}), 0, 0, -7.83, g);
-    for (let i = 0; i < 5; i++) for (const y of [.75,1.05]) SPH(.03, M(0xA9946F), -1 + i*.5, y, -7.75, g, 8);
-    B(2.2,.2,2.3, MAT.white, 0, .4, -6.7, g);
-    B(2.24,.12,1.5, M(0xFFFDF8), 0, .55, -6.05, g); B(2.26,.13,.42, MAT.gold, 0, .55, -5.55, g);
-    for (const u of [-.7,0,.7]) B(.62,.14,.4, M(0xFAF7F0), u, .6, -7.45, g);
-    // TV na parede da porta, mesa e cadeira giratória
-    B(1.3,.75,.06, MAT.black, 2.7, 1.3, -.16, g);
-    { const tv = new THREE.Mesh(new THREE.PlaneGeometry(1.2,.66), new THREE.MeshBasicMaterial({map:VIEW.sea})); tv.position.set(2.7,1.675,-.195); tv.rotation.y = Math.PI; g.add(tv); }
-    S(B(1.4,.75,.6, M(0x6E4A30), 2.7, 0, -.55, g));
-    { const ch = new THREE.Group(); ch.position.set(2.7, 0, -1.4); g.add(ch);
-      CY(.28,.28,.04, MAT.black, 0, 0, 0, ch); CY(.03,.03,.4, MAT.steel, 0, .04, 0, ch, 8);
-      B(.5,.08,.5, M(0x2F3A48), 0, .44, 0, ch); B(.5,.55,.08, M(0x2F3A48), 0, .52, -.24, ch); ch.rotation.y = Math.PI + .3; }
-    // banheiro com azulejos brancos e box de vidro
-    B(2.4,.01,2.4, MAT.wallTile, -3.25, .015, -1.3, g, false);
-    S(B(2.4,2.4,.08, MAT.wallTile, -3.25, 0, -2.5, g)); S(B(.08,2.4,1.7, MAT.wallTile, -2.05, 0, -1.65, g));
-    B(.9,2.1,.03, MAT.glass, -3.95, 0, -1.6, g); B(.03,2.1,.9, MAT.glass, -3.5, 0, -2.05, g);
-    CY(.06,.06,.03, MAT.steel, -4.1, 2.0, -2.2, g, 10);
-    S(B(.7,.8,.45, M(0xF2F2F2), -2.6, 0, -2.2, g)); CY(.16,.12,.08, M(0xDDE6EA), -2.6, .8, -2.2, g);
-    // abajur de pé
-    CY(.15,.15,.03, MAT.gold, 1.6, 0, -7.4, g); CY(.015,.015,1.4, MAT.gold, 1.6, 0, -7.4, g, 6);
-    mesh(new THREE.CylinderGeometry(.16,.22,.28,16,1,true), new THREE.MeshStandardMaterial({color:0xFFE9B0, emissive:0xFFC870, emissiveIntensity:.6, side:THREE.DoubleSide}), 1.6, 1.5, -7.4, g);
-  }
+  if (L === 2){ const lay = Object.assign({}, GROUND_LAYOUT, {jacuzzi:{u:2.75, v:5.9}}); furnishRoom(room, g, S, lay); fiveStar(room, g, S, lay); }
   if (L === 3){
     // cama com dossel
     S(B(2.5,.45,2.6, M(0xE8DCC8), 0, 0, -6.55, g));
@@ -1623,7 +1654,7 @@ function upperLayout(room, L){
   const lay = {hw, dv, ceil:room.ceil, core:{u:-hw, v:cv, rot:Math.PI/2}, window:UPPER_WIN,
     wardrobe:{u:hw - .3, v:5.6, rot:Math.PI, len:1.6}, desk:{u:hw - .25, v:1.5, rot:0, len:1.0},
     armchair:{u:-hw + .6, v:1.0, rot:-.6}, sidetable:pres ? {u:-hw + .45, v:1.85} : null,
-    mirror:{u:1.4}, plant:{u:-hw + .35, v:dv - .35}, jacuzzi:pres ? {u:1.45, v:3.0} : null};
+    mirror:{u:1.4}, plant:{u:-hw + .35, v:dv - .35}, jacuzzi:L >= 2 ? {u:1.45, v:3.0} : null};
   const d = lay.desk, w = lay.wardrobe, a = lay.armchair;
   lay.focus = {
     walls:{eye:[hw - .4, 1.6, .6], at:[-hw, 1.5, cv]}, floor:{eye:[hw - .3, 2.6, .4], at:[-.3, 0, cv - .6]},
@@ -1645,7 +1676,38 @@ function furnishUpper(room, g, S, L){
     const ladder = B(.5,2.4,.08, M(0xC8CED6,{metalness:.6}), -room.hw + .5, 0, -room.dv + .4, g); ladder.rotation.x = .25;
     return;
   }
-  furnishRoom(room, g, S, upperLayout(room, L));
+  const lay = upperLayout(room, L); furnishRoom(room, g, S, lay);
+  if (L >= 2) fiveStar(room, g, S, lay);
+}
+/* Detalhes de hotel cinco estrelas da Executiva (e da Presidencial do 2º andar): lustre de cristal, fita de luz sob a
+   borda da jacuzzi, velas, toalhas enroladas e balde de gelo com champanhe e taças.
+   Tudo encostado na jacuzzi ou na parede, sem colisão nova no caminho */
+function fiveStar(room, g, S, lay){
+  const {hw, dv, ceil} = lay, crystal = M(0xFFFFFF, {transparent:true, opacity:.55, roughness:.02, metalness:.1});
+  // lustre no centro do teto
+  { const c = new THREE.Group(); c.position.set(0, ceil - .02, -dv*.55); g.add(c);
+    CY(.012, .012, .45, MAT.gold, 0, -.45, 0, c, 6); CY(.32, .26, .05, MAT.gold, 0, -.5, 0, c, 28);
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 14 - r*5; i++){ const a = i/(14 - r*5)*Math.PI*2, R = .3 - r*.12;
+      SPH(.028, crystal, Math.cos(a)*R, -.58 - r*.14 - (i % 2)*.04, Math.sin(a)*R, c, 8); }
+    mesh(new THREE.SphereGeometry(.09, 16, 12), new THREE.MeshStandardMaterial({color:0xFFF4D8, emissive:0xFFD890, emissiveIntensity:1.2}), 0, -.62, 0, c); }
+  if (lay.jacuzzi){
+    const {u, v} = lay.jacuzzi, z = -v;
+    // fita de LED quente sob a borda e degrau de mármore
+    const led = mesh(new THREE.TorusGeometry(.97, .015, 6, 64), new THREE.MeshBasicMaterial({color:0xFFC878}), u, .06, z, g); led.rotation.x = Math.PI/2;
+    // toalhas enroladas e velas na borda
+    for (const a of [.35, .6]){ const t = CY(.06, .06, .34, M(0xFFFFFF, {roughness:1}), u + Math.cos(a)*.92, .52, z - Math.sin(a)*.92, g, 14); t.rotation.z = Math.PI/2; t.rotation.y = a; t.position.y = .56; }
+    for (const a of [2.3, 2.6, 2.9]){ const x = u + Math.cos(a)*.93, zz = z - Math.sin(a)*.93;
+      CY(.025, .025, .07 + (a*7 % 3)*.02, M(0xFFF8EC, {roughness:.6}), x, .5, zz, g, 10);
+      mesh(new THREE.SphereGeometry(.012, 6, 5), new THREE.MeshBasicMaterial({color:0xFFB347}), x, .6 + (a*7 % 3)*.02, zz, g); }
+    // balde de gelo com champanhe e duas taças, num suporte ao lado da jacuzzi
+    { const x = u - 1.15, zz = z + .55, st = M(0xD6DCE2, {metalness:1, roughness:.15});
+      CY(.015, .015, .62, MAT.gold, x, 0, zz, g, 8); CY(.16, .16, .015, MAT.gold, x, 0, zz, g, 18);
+      mesh(LATHE([[0,0],[.1,0],[.13,.2],[.12,.2],[.09,.02],[0,.02]], 24), st, x, .62, zz, g);
+      CY(.035, .04, .22, M(0x1F3B22, {roughness:.2, metalness:.2}), x, .66, zz, g, 14); CY(.014, .02, .08, M(0x1F3B22, {roughness:.2}), x, .88, zz, g, 10);
+      CY(.018, .018, .03, MAT.gold, x, .96, zz, g, 10);
+      for (const d of [-.07, .07]){ const fx = u - .9, fz = z + .9 + d;
+        mesh(LATHE([[0,0],[.025,0],[.004,.008],[.004,.1],[.02,.13],[.025,.2],[0,.2]], 18), GLASS(0xF4FAFC, .25), fx, .5, fz, g); } }
+  }
 }
 /* Foto PBR como grão e relevo (GFX.relief) ligada ou desligada num material */
 /* Materiais fotográficos de verdade (Poly Haven, CC0), compartilhados por slug: cor = só o grão da foto em cinza
@@ -2378,7 +2440,13 @@ ANIM.push((dt, t) => {
   caustic.material.map.offset.set(Math.sin(t*.3)*.2, t*.03);
   water1.position.y = -.2 + Math.sin(t*1.3)*.012; water2.position.y = -.18 + Math.sin(t*1.1 + 1)*.015;
 });
-solid(POOL.x1, -POOL.y2, POOL.x2, -POOL.y1);
+/* O jogador pode entrar na piscina: dentro do retângulo arredondado ele nada com a cabeça para fora d'água */
+function inPool(x, z){
+  const y = -z, r = POOL.r;
+  if (x < POOL.x1 || x > POOL.x2 || y < POOL.y1 || y > POOL.y2) return false;
+  const cx = Math.max(POOL.x1 + r, Math.min(POOL.x2 - r, x)), cy = Math.max(POOL.y1 + r, Math.min(POOL.y2 - r, y));
+  return Math.hypot(x - cx, y - cy) <= r;
+}
 // escada da piscina
 for (const dx of [0,.5]){ CY(.025,.025,1.6, MAT.steel, 5.2 + dx, -1.4, -15.25, scene, 8);
   const arc = new THREE.Mesh(new THREE.TorusGeometry(.25,.025,6,12,Math.PI), MAT.steel); arc.position.set(5.2 + dx, .2, -15); arc.rotation.y = Math.PI/2; scene.add(arc); }
@@ -2548,7 +2616,7 @@ for (const [x,z] of [[-1,-10],[21,-10],[-1,-27],[21,-27]]){
    ============================================================ */
 const MODELS = {
   attendant:{file:'attendant_detailed_unrigged', height:1.7, lowerArms:true, legs:true},
-  barman:{file:'barman_game_ready', height:1.78, legs:true},
+  barman:{file:'barman_game_ready', height:1.78, lowerArms:true, legs:true},
   chef:{file:'chef_rigged', height:1.86, rig:true},
   maidF:{file:'housekeeper_female_rigged', height:1.66, rig:true},
   maidM:{file:'housekeeper_male_rigged', height:1.76, rig:true},
@@ -2596,26 +2664,39 @@ function placeModel(id, tpl, h){
   holder.add(model); holder.userData.model = model;
   return holder;
 }
-/* Personagem estático em pose T: abaixa os braços girando, em torno do ombro, os vértices fora da largura do
-   tronco (o modelo olha para +x, então o lado é z). Uma faixa de transição evita rasgar a malha no ombro. */
+/* Personagem estático em pose T ou A: abaixa os braços girando, em torno do ombro, só o que falta para ficarem
+   junto ao corpo (o modelo olha para +x, então o lado é z). Mede a meia largura do tronco no meio do peito (fim do
+   primeiro trecho contínuo de malha a partir do centro), a mão (vértices mais afastados do lado) e o ombro (topo do
+   braço logo além do tronco); o giro é o ângulo real do braço menos ~7°. Cabeça, cintura e quadril não giram, e uma
+   faixa de transição evita rasgar a malha no ombro. */
 function lowerArms(geo){
   const p = geo.attributes.position, nr = geo.attributes.normal;
   geo.computeBoundingBox();
-  const bb = geo.boundingBox, H = bb.max.y - bb.min.y, maxZ = Math.max(-bb.min.z, bb.max.z);
-  let ys = 0, c = 0;
-  for (let i = 0; i < p.count; i++) if (Math.abs(p.getZ(i)) > maxZ*.8){ ys += p.getY(i); c++; }
-  if (!c) return;
-  ys /= c;                                                      // altura do ombro = altura média das mãos abertas
-  let zs = 0;
-  for (let i = 0; i < p.count; i++){ const y = p.getY(i); if (y < ys - .07*H && y > ys - .2*H) zs = Math.max(zs, Math.abs(p.getZ(i))); }
-  const band = .05*H, ang = 1.36;
-  for (let i = 0; i < p.count; i++){
-    const z = p.getZ(i), y = p.getY(i), az = Math.abs(z);
-    if (az <= zs || y < ys - .12*H) continue;
-    const t = Math.min(1, (az - zs)/band), s = Math.sign(z), a = -s*ang*t*t*(3 - 2*t), cs = Math.cos(a), sn = Math.sin(a);
-    const dz = z - s*zs, dy = y - ys;
-    p.setZ(i, s*zs + dz*cs - dy*sn); p.setY(i, ys + dz*sn + dy*cs);
-    if (nr){ const nz = nr.getZ(i), ny = nr.getY(i); nr.setZ(i, nz*cs - ny*sn); nr.setY(i, nz*sn + ny*cs); }
+  const bb = geo.boundingBox, H = bb.max.y - bb.min.y, y0 = bb.min.y, zc = (bb.min.z + bb.max.z)/2;
+  for (const s of [1, -1]){
+    const side = i => s*(p.getZ(i) - zc), occ = new Uint8Array(50);
+    for (let i = 0; i < p.count; i++){ const y = (p.getY(i) - y0)/H, z = side(i)/H; if (y > .58 && y < .62 && z > 0 && z < .5) occ[Math.floor(z*100)] = 1; }
+    let k = 0, gap = 0; while (k < 50 && gap < 3){ gap = occ[k] ? 0 : gap + 1; k++; }
+    const zt = (k - gap)/100*H, zmax = s > 0 ? bb.max.z - zc : zc - bb.min.z;
+    let hz = 0, hy = 0, c = 0;
+    for (let i = 0; i < p.count; i++){ const z = side(i); if (z > zmax*.85){ hz += z; hy += p.getY(i); c++; } }
+    if (!c || zt <= 0 || zmax < zt + .1*H) continue;   // sem braço aberto deste lado
+    hz /= c; hy /= c;
+    let top = -1e9; for (let i = 0; i < p.count; i++){ const z = side(i); if (z > zt + .03*H && z < zt + .07*H) top = Math.max(top, p.getY(i)); }
+    const zs = zt + .01*H, ys = Math.min(top - .04*H, y0 + .82*H);
+    const phi = Math.atan2(hz - zs, ys - hy), ang = phi - .12;   // phi: ângulo do braço a partir da vertical
+    if (ang <= .02) continue;
+    const band = .06*H, lim = phi*.45;
+    for (let i = 0; i < p.count; i++){
+      const z = side(i), y = p.getY(i);
+      if (z <= zs || y > ys + .1*H) continue;
+      const psi = Math.atan2(z - zs, ys - y);
+      if (y < ys && psi < lim) continue;                     // abaixo do ombro e junto do tronco: cintura e quadril
+      const t = Math.min(1, (z - zs)/band), w = t*t*(3 - 2*t)*(y < ys ? Math.min(1, (psi - lim)/(phi*.2)) : 1);
+      const a = -ang*w, cs = Math.cos(a), sn = Math.sin(a), dz = z - zs, dy = y - ys;
+      p.setZ(i, zc + s*(zs + dz*cs - dy*sn)); p.setY(i, ys + dz*sn + dy*cs);
+      if (nr){ const nz = s*nr.getZ(i), ny = nr.getY(i); nr.setZ(i, s*(nz*cs - ny*sn)); nr.setY(i, nz*sn + ny*cs); }
+    }
   }
   p.needsUpdate = true; if (nr) nr.needsUpdate = true;
   geo.computeBoundingBox(); geo.computeBoundingSphere();
@@ -2626,7 +2707,7 @@ const NPC_MODEL = {recep:'attendant', bartender:'barman', chef:'chef'};
 const GUEST_MODEL = {'Mãe & Filha':'guestFamily', 'Executiva':'guestSuit', 'Cliente Sênior VIP':'guestFem', 'Turista Tropical':'guestTrop', 'Mochileira Eco-Turista':'guestTraveler'};
 let maidModels = 0;
 function dressNPC(n){
-  const id = n.kind === 'maid' ? (maidModels++ % 2 ? 'maidM' : 'maidF')
+  const id = n.kind === 'maid' ? (maidModels % 2 ? 'maidM' : 'maidF')
     : n.kind === 'guest' ? (GUEST_MODEL[n.personaName] || pick(['guestF01', 'guestTraveler', 'guestTrop', 'guestFem'])) : NPC_MODEL[n.kind];
   if (!id || (MODELS[id].rig && !THREE.SkeletonUtils)) return;
   loadModel(id).then(tpl => {
@@ -2656,11 +2737,72 @@ loadModel('bush').then(tpl => {
     const h = placeModel('loungerSet', tpl); h.position.set(x, 0, z); h.rotation.y = ry; scene.add(h);
   }));
 }
-/* Carrinhos de limpeza das camareiras estacionados no corredor dos quartos */
-{ const spots = [[-10.6, 1.5, Math.PI/2], [-24.6, -1.5, -Math.PI/2]];
-  spots.forEach(([x, z]) => solid(x - .45, z - .4, x + .45, z + .4));
-  loadModel('cart').then(tpl => { if (!tpl) return; spots.forEach(([x, z, ry]) => { const h = placeModel('cart', tpl); h.position.set(x, 0, z); h.rotation.y = ry; scene.add(h); }); });
+/* ============================================================
+   SALINHA DAS FAXINEIRAS · atrás do lobby (porta "Somente funcionários" na parede norte), entre o lobby e o bloco
+   dos quartos: armário de aço, prateleira de produtos, mesinha com banquinhos e garrafa térmica, quadro de avisos e
+   duas vagas de carrinho. Cada faxineira contratada nasce aqui com o seu carrinho e volta para cá quando não há
+   quarto para limpar.
+   ============================================================ */
+const STAFF_ROOM = {x1:-7.9, x2:-2.6, z1:-10.2, z2:-6, h:3.1, slots:[[-6.2, -8.75], [-4.2, -8.75]]};
+{ const R = STAFF_ROOM, wallM = M(0xE9E4DA, {roughness:.85}), steel = M(0x9AA3AC, {metalness:.6, roughness:.35});
+  wallX(R.z1, -8, R.x2 + .1, R.h, wallM); wallZ(R.x2, R.z1, R.z2, R.h, wallM);
+  floor(R.x1, R.z1, R.x2, R.z2, M(0xB9BDB8, {roughness:.6}), .012);
+  const roof = ceiling(R.x1, R.z1 - .1, R.x2 + .1, R.z2, R.h); roof.material = M(0xD9D4CA, {roughness:.9});
+  lamp((R.x1 + R.x2)/2, R.h - .3, (R.z1 + R.z2)/2, 0xFFF1D8, .8, 7);
+  B(.9, .03, .5, M(0xFFFDF5, {emissive:0xFFF4DD, emissiveIntensity:.8}), (R.x1 + R.x2)/2, R.h - .12, (R.z1 + R.z2)/2);
+  // placa e batente da porta, do lado do lobby
+  const sign = tex(512, (g, w, h) => { g.fillStyle = '#2A1B14'; g.fillRect(0, 0, w, h); g.strokeStyle = '#D8A64A'; g.lineWidth = 10; g.strokeRect(8, 8, w - 16, h - 16);
+    g.fillStyle = '#F6EFE3'; g.font = 'bold 54px Outfit, sans-serif'; g.textAlign = 'center'; g.fillText('SOMENTE', w/2, h/2 - 10); g.fillText('FUNCIONÁRIOS', w/2, h/2 + 52); }, 160);
+  B(.9, .28, .02, M(0xFFFFFF, {map:sign}), -5.6, 2.55, -5.88);
+  B(.06, 2.4, .26, MAT.woodDark, -6.23, 0, -6); B(.06, 2.4, .26, MAT.woodDark, -4.97, 0, -6); B(1.32, .08, .26, MAT.woodDark, -5.6, 2.4, -6);
+  // armário de aço de duas portas, encostado na parede dos quartos
+  { const g = new THREE.Group(); g.position.set(-7.5, 0, -9.2); scene.add(g);
+    B(.6, 2.0, 1.2, steel, 0, 0, 0, g); B(.62, .04, 1.22, M(0x7E878F, {metalness:.6, roughness:.4}), 0, 2.0, 0, g);
+    B(.005, 1.9, .004, M(0x2E3438), .301, .05, 0, g);
+    for (const dz of [-.06, .06]) B(.03, .22, .02, M(0xD6DCE2, {metalness:1, roughness:.2}), .31, 1.0, dz, g);
+    for (let k = 0; k < 3; k++) for (const dz of [-.3, .3]) B(.006, .02, .4, M(0x6E767E), .301, 1.65 - k*.04, dz, g);   // ventilação
+    solid(-7.85, -9.85, -7.15, -8.55); }
+  // prateleira aberta com produtos de limpeza e rolos de papel
+  { const g = new THREE.Group(); g.position.set(-7.65, 0, -7.3); scene.add(g);
+    for (const y of [.4, 1.0, 1.6]) B(.4, .03, .9, MAT.woodDark, 0, y, 0, g);
+    for (const dz of [-.43, .43]) B(.4, 1.65, .03, MAT.woodDark, 0, 0, dz, g);
+    const cols = [0x3D7CC9, 0xF5C542, 0x2BB3B1, 0xE86A5A, 0x6BA82A, 0xFFFFFF];
+    for (let k = 0; k < 12; k++){ const y = [.43, 1.03, 1.63][k % 3], dz = -.33 + Math.floor(k/3)*.22;
+      CY(.04, .045, .2 + (k % 2)*.06, M(cols[k % cols.length], {roughness:.4}), 0, y, dz, g, 10);
+      CY(.015, .015, .04, M(0xFFFFFF), 0, y + .2 + (k % 2)*.06, dz, g, 6); }
+    solid(-7.88, -7.78, -7.42, -6.82); }
+  // mesinha redonda com dois banquinhos, garrafa térmica e canecas
+  { const x = -3.45, z = -7.2, g = new THREE.Group(); g.position.set(x, 0, z); scene.add(g);
+    CY(.4, .4, .03, M(0xF2EEE6, {roughness:.5}), 0, .72, 0, g, 28); CY(.035, .035, .72, steel, 0, 0, 0, g, 10); CY(.25, .25, .02, steel, 0, 0, 0, g, 20);
+    for (const [dx, dz] of [[-.62, .1], [.1, .64]]){ CY(.17, .17, .05, M(0x2BB3B1, {roughness:.8}), dx, .45, dz, g, 18); CY(.025, .025, .45, steel, dx, 0, dz, g, 8); }
+    CY(.05, .055, .26, M(0xB8332C, {roughness:.35}), -.12, .75, -.08, g, 14); CY(.03, .03, .05, M(0x2E3438), -.12, 1.01, -.08, g, 10);
+    for (const [dx, dz] of [[.12, .05], [.05, -.16]]) CY(.04, .035, .09, M(0xFFFFFF, {roughness:.3}), dx, .75, dz, g, 14);
+    solid(x - .42, z - .42, x + .42, z + .42); }
+  // quadro de avisos com a escala de limpeza
+  { const board = tex(512, (g, w, h) => { g.fillStyle = '#B98A5A'; g.fillRect(0, 0, w, h); const cs = ['#FFF6A8', '#BDE7F7', '#FFD1DC', '#D9F2C4', '#FFFFFF'];
+      for (let k = 0; k < 7; k++){ g.fillStyle = cs[k % cs.length]; const x = 30 + (k % 4)*118, y = 30 + Math.floor(k/4)*170; g.fillRect(x, y, 100, 130);
+        g.fillStyle = '#555'; for (let l = 0; l < 5; l++) g.fillRect(x + 12, y + 22 + l*20, 60 + (l*17 % 20), 5); g.fillStyle = '#C0392B'; g.beginPath(); g.arc(x + 50, y + 8, 7, 0, 7); g.fill(); } }, 512, 340);
+    B(1.1, .72, .03, M(0xFFFFFF, {map:board, roughness:.9}), -3.4, 1.35, -10.08); }
+  // vagas dos carrinhos: moldura amarela no piso
+  for (const [x, z] of R.slots){ floor(x - .55, z - 1.35, x + .55, z - .35, M(0xF5C542, {roughness:.7}), .014); floor(x - .5, z - 1.3, x + .5, z - .4, M(0xB9BDB8, {roughness:.6}), .016); }
 }
+/* Carrinho de limpeza (modelo cleaning_cart_hotel_game) que acompanha a faxineira: vai à frente dela, empurrado,
+   fica no corredor (ou no pé da escada) enquanto ela limpa o quarto e volta com ela para a salinha */
+const _cv = new THREE.Vector3();
+function attachCart(n){
+  const g = new THREE.Group(); g.position.set(0, 0, .82); n.g.add(g); n.cart = g;
+  loadModel('cart').then(tpl => { if (!tpl){ B(.7, .45, .5, M(0xC9CED6, {metalness:.5, roughness:.4}), 0, .25, 0, g); return; }
+    const h = placeModel('cart', tpl); h.rotation.y = Math.PI; g.add(h); });
+}
+function parkCart(n){
+  const c = n.cart; if (!c || c.parent !== n.g) return;
+  n.g.updateMatrixWorld(true); c.getWorldPosition(_cv); const ry = n.g.rotation.y;
+  n.g.remove(c); scene.add(c); c.position.set(_cv.x, n.g.position.y, _cv.z); c.rotation.set(0, ry, 0);
+}
+function grabCart(n){ const c = n.cart; if (!c || c.parent === n.g) return; scene.remove(c); n.g.add(c); c.position.set(0, 0, .82); c.rotation.set(0, 0, 0); }
+// onde o carrinho espera: no corredor em frente ao quarto, ou no pé da escada para quartos de cima
+const cartNode = room => { const rn = roomNode(room); return (NODES[rn][2] || 0) === 0 ? ADJ[rn][0] : 'SB'; };
+function maidHome(n, cb){ const [x, z] = STAFF_ROOM.slots[n.slot || 0]; route(n, 'SR', [[x, z + .9]], () => { n.g.rotation.y = Math.PI; if (cb) cb(); }); }
 /* Recepção · poltronas SheenChair e luminária Iridescence Lamp (modelos glTF dos exemplos do three.js). O GLTFLoader
    r128 não lê KHR_materials_sheen: o tecido vira MeshPhysicalMaterial com sheen para manter o brilho de veludo.
    Em file:// ou se o arquivo falhar, ficam poltronas estofadas procedurais no mesmo lugar. */
@@ -2731,7 +2873,7 @@ function attachLegRig(holder, def){
   m.parent.add(sm); m.parent.remove(m);
   return {hips, knees};
 }
-function syncLegs(n){ const L = n.legRig; for (let i = 0; i < 2; i++){ L.hips[i].rotation.z = -n.legs[i].rotation.x*.75; L.knees[i].rotation.z = -(n.knee ? n.knee[i] : 0); } }
+function syncLegs(n){ const L = n.legRig, k = n.pose === 'lie' ? 1 : .75; for (let i = 0; i < 2; i++){ L.hips[i].rotation.z = -n.legs[i].rotation.x*k; L.knees[i].rotation.z = -(n.knee ? n.knee[i] : 0); } }
 /* Ossos do esqueleto Mixamo (o GLTFLoader tira o ':' do nome: 'mixamorig:Hips' vira 'mixamorigHips') */
 function makeRig(model){
   const find = name => { let b = null; model.traverse(o => { if (!b && o.isBone && o.name.replace(/^mixamorig:?/, '') === name) b = o; }); return b; };
@@ -2768,14 +2910,14 @@ function syncRig(n){
     R.down = R.ua.map((a, i) => align(a, R.fa[i], a, side[i], .06));
     R.ua.forEach((a, i) => rotateBone(a, _rb, R.down[i]));
     // o antebraço corrigido vira a nova pose de repouso, relativa ao braço: assim acompanha o balanço dele
-    R.fa.forEach((f, i) => { rotateBone(f, _rb, align(f, R.hd[i], f, side[i] * .6, .18)); f.userData.bind = f.quaternion.clone(); });
+    R.fa.forEach((f, i) => { rotateBone(f, _rb, align(f, R.hd[i], f, side[i] * .15, .18)); f.userData.bind = f.quaternion.clone(); });
   }
   const lean = (n.legs[0].rotation.x - n.legs[1].rotation.x)*.1;   // tronco gira contra o quadril
   if (R.spine) rotateBone(R.spine, _rb, _ra.setFromAxisAngle(new THREE.Vector3(0, 1, 0), lean));
   for (let i = 0; i < 2; i++){
     const leg = n.legs[i].rotation.x, arm = n.arms[i].rotation.x;
     // o balanço do boneco (±0,55 rad) é largo para uma perna realista: a coxa usa 70% dele e o joelho dobra só para trás
-    rotateBone(R.ul[i], _rb, _ra.setFromAxisAngle(RIG_X, leg*.7));
+    rotateBone(R.ul[i], _rb, _ra.setFromAxisAngle(RIG_X, leg*(n.pose === 'lie' ? 1 : .7)));   // deitado: quadril dobra inteiro
     const kn = n.knee ? n.knee[i] : Math.max(0, leg)*.85 + Math.abs(leg)*.1;
     if (R.ll[i]) rotateBone(R.ll[i], _rb, _ra.setFromAxisAngle(RIG_X, kn));
     if (R.ft[i]) rotateBone(R.ft[i], _rb, _ra.setFromAxisAngle(RIG_X, -(leg*.7 + kn)*.55));   // pé quase paralelo ao chão
@@ -2787,8 +2929,7 @@ function syncRig(n){
     if (R.neck) rotateBone(R.neck, _rb, _rh.setFromAxisAngle(RIG_Y, y*.4).multiply(_rh2.setFromAxisAngle(RIG_X, -p*.4)));
     rotateBone(R.head, _rb, _rh.setFromAxisAngle(RIG_Y, R.neck ? y*.6 : y).multiply(_rh2.setFromAxisAngle(RIG_X, -p*(R.neck ? .6 : 1)))); }
 }
-/* Olhar e cumprimentar: NPC parado e em pé a menos de 3,5 m do jogador vira o corpo (e, nos modelos com esqueleto,
-   o pescoço e a cabeça) para ele e volta quando ele se afasta. A equipe cumprimenta no primeiro contato; a
+/* Cumprimentar: NPC parado e em pé a menos de 3,5 m do jogador cumprimenta (sem virar o corpo para ele). A equipe cumprimenta no primeiro contato; a
    recepcionista faz reverência, acena, toca o sino e saúda conforme a hora do jogo e a fila do balcão */
 const SPEECH = (() => { const s = textSprite(.2, 1100, 72); s.visible = false; s.renderOrder = 10; s.material.depthTest = false; scene.add(s); return {s, who:null, t:0}; })();
 function say(n, text, secs = 3.4){ SPEECH.who = n; SPEECH.t = secs; SPEECH.s.userData.set(text, 'rgba(246,239,227,.96)', '#2A1B14'); SPEECH.s.visible = true; }
@@ -2815,8 +2956,6 @@ ANIM.push((dt, t) => {
     let want = 0, pitch = 0;
     const p = n.g.position, dx = cp.x - p.x, dz = cp.z - p.z, d = Math.hypot(dx, dz);
     const near = d < 3.5 && !n.path.length && n.pose === 'stand' && (n.level || 0) === PLAYER_LEVEL;
-    if (near){ let rel = Math.atan2(dx, dz) - n.g.rotation.y; rel = Math.atan2(Math.sin(rel), Math.cos(rel));
-      if (Math.abs(rel) < 2.5){ want = rel; pitch = Math.atan2(cp.y - p.y - 1.6, d); } }
     if (near && !n.wasNear && d < 3.2){
       const staff = n.kind !== 'guest', cool = n.greetAt === undefined || T - n.greetAt > (staff ? 30 : 60);
       if (cool && (staff || Math.random() < .35)){
@@ -2851,7 +2990,7 @@ ANIM.push(() => { for (const n of NPCS){ if (n.rig) syncRig(n); else if (n.legRi
 const NODES = {
   // SW: calçada em frente à entrada (de onde os hóspedes chegam e por onde vão embora)
   SW:[0,16.6], OUT:[0,12.8], ENT:[0,8], LS:[0,4.5], LC:[0,2.6], LW:[-6,0], LE:[6.5,.4], LN:[5.75,-4.4], PT:[5.75,-8.6], DK:[5.75,-10.6],
-  CW:[-9.6,0], CA:[-12.5,0], CB:[-21.5,0], R101:[-12.5,-5], R102:[-12.5,5], R103:[-21.5,-5], R104:[-21.5,5],
+  CW:[-9.6,0], SL:[-5.6,-4.6], SD:[-5.6,-6.8], SR:[-5.2,-7.6], CA:[-12.5,0], CB:[-21.5,0], R101:[-12.5,-5], R102:[-12.5,5], R103:[-21.5,-5], R104:[-21.5,5],
   DW:[9.5,0], DM:[9.8,6.4], KD:[19,6.4], KI:[22,6.2], ST:[26.1,-1.5],
   /* 2º andar: o terceiro valor é o andar do nó (0 térreo, 1 superior). SB/SU são o pé e o topo da escada */
   SB:[0.9,4.75,0], SU:[7.1,4.75,1], UH:[6.6,2.5,1], UC:[0,2.5,1], UW:[-5.33,2.5,1],
@@ -2861,7 +3000,7 @@ const NODES = {
   D201:[-5.33,1.6,1], U201:[-5.33,-2.4,1], D202:[0,1.6,1], U202:[0,-2.4,1], D203:[5.33,1.6,1], U203:[5.33,-2.4,1],
 };
 const EDGES = [['SW','OUT'],['OUT','ENT'],['ENT','LS'],['LS','LC'],['LC','LW'],['LC','LE'],['LE','LN'],['LN','PT'],['PT','DK'],
-  ['LW','CW'],['CW','CA'],['CA','CB'],['CA','R101'],['CA','R102'],['CB','R103'],['CB','R104'],
+  ['LW','CW'],['LW','SL'],['SL','SD'],['SD','SR'],['CW','CA'],['CA','CB'],['CA','R101'],['CA','R102'],['CB','R103'],['CB','R104'],
   ['LE','DW'],['DW','DM'],['DM','KD'],['KD','KI'],['KI','ST'],
   ['LS','SB'],['SB','SU'],['SU','UH'],['UH','UC'],['UC','UW'],['UW','D201'],['UC','D202'],['UH','D203'],
   ['D201','U201'],['D202','U202'],['D203','U203'],
@@ -2925,19 +3064,35 @@ function removeNPC(n){
   const j = G.guests.indexOf(n); if (j >= 0) G.guests.splice(j,1);
 }
 function route(n, target, extra = [], cb = null){
-  const names = n.at ? bfs(n.at, target) : [target];
+  const names = n.at ? bfs(n.at, target) : [target], P = n.g.position;
+  // pula o primeiro nó quando o seguinte já está mais perto (ou o NPC já passou dele): sem ir para trás antes de seguir
+  for (let k = 0; k < 2 && names.length > 1; k++){
+    const a = NODES[names[0]], b = NODES[names[1]];
+    if ((a[2] || 0) !== (b[2] || 0) || (a[2] || 0) !== (n.level || 0)) break;
+    const dA = Math.hypot(P.x - a[0], P.z - a[1]), dB = Math.hypot(P.x - b[0], P.z - b[1]);
+    if (dA > .3 && (dB <= dA || dB < Math.hypot(a[0] - b[0], a[1] - b[1]))) names.shift(); else break;
+  }
   n.path = names.map(k => NODES[k].slice()).concat(extra.map(p => p.slice()));
   n.at = target; n.onArrive = cb; pose(n, 'stand');
 }
 const wait = (n, secs, cb) => { n.timer = secs; n.onTimer = cb; };
+const _lq = new THREE.Quaternion(), _lv = new THREE.Vector3();
 function pose(n, p, where){
   n.pose = p; n.body.position.set(0,0,0); n.body.rotation.set(0,0,0); n.g.rotation.set(0, n.g.rotation.y, 0);
   n.knee = p === 'sit' ? [1.1, 1.1] : [0, 0];   // sentado: canela na vertical
   n.legs.forEach(l => l.rotation.x = 0); n.arms.forEach(a => a.rotation.x = 0);
   if (p === 'sit'){ n.g.position.set(where.x, 0, where.z); n.g.rotation.y = Math.PI/2; n.body.position.y = -.36; n.legs.forEach(l => l.rotation.x = -Math.PI/2); n.arms.forEach(a => a.rotation.x = -.7); }
-  if (p === 'lie'){ n.g.position.set(where.x, .44, where.z - .75); n.g.rotation.set(Math.PI/2 - .45, 0, 0); n.arms.forEach(a => a.rotation.x = .3); }
-  // modelo estático não dobra: sentado ou deitado volta o boneco articulado; em pé, o modelo
-  if (n.model && !n.rig && n.procParts){ const st = p === 'stand'; n.model.visible = st; n.procParts.forEach(c => { c.visible = !st; }); }
+  if (p === 'lie'){
+    // de barriga para cima: o quadril pousa no colchão, o tronco acompanha o encosto (cabeça para +z da
+    // espreguiçadeira) e as pernas ficam esticadas sobre o assento; ry é o giro da espreguiçadeira
+    const back = where.back || .75, ry = where.ry || 0, h = where.hip || {x:where.x, y:.47, z:where.z + .3};
+    n.g.quaternion.setFromAxisAngle(RIG_Y, ry).multiply(_lq.setFromAxisAngle(RIG_X, Math.PI/2 - back)).multiply(_lq.setFromAxisAngle(RIG_Y, Math.PI));
+    _lv.set(0, .82, 0).applyQuaternion(n.g.quaternion); n.g.position.set(h.x - _lv.x, h.y - _lv.y, h.z - _lv.z);
+    n.legs.forEach(l => l.rotation.x = -back); n.arms.forEach(a => a.rotation.x = .05);
+  }
+  // modelo estático não dobra: sentado volta o boneco articulado; deitado também, a não ser que tenha o esqueleto
+  // de pernas (legRig), que dobra o quadril; em pé, o modelo
+  if (n.model && !n.rig && n.procParts){ const st = p === 'stand' || (p === 'lie' && !!n.legRig); n.model.visible = st; n.procParts.forEach(c => { c.visible = !st; }); }
 }
 /* Ciclo de marcha: coxa à frente e atrás, joelho dobra no balanço (pico logo depois de a perna passar sob o corpo) e
    estica no toque do calcanhar, braço oposto à perna, bacia sobe no apoio simples, peso passa de um pé para o outro,
@@ -2983,6 +3138,7 @@ function stepNPC(n, dt){
     n.body.position.x *= .85; n.body.rotation.z *= .85; if (!(n.bowT > 0)) n.body.rotation.x *= .85;
     n.body.position.y = Math.sin(T*1.7 + n.phase)*.004;                              // respiração
   }
+  if (n.cart && n.cart.parent === n.g && n.pose === 'stand') n.arms.forEach(a => a.rotation.x = -.95);   // mãos na alça do carrinho
 }
 
 /* ============================================================
@@ -3144,12 +3300,10 @@ function hire(role){
   renderPC();
 }
 function spawnStaff(role, i){
+  if (role === 'maid') maidModels = i;
   const n = makeNPC(role); n.role = role; STAFF.push(n);
   if (role === 'recep'){ n.g.position.set(1.6, 0, -4.6); n.g.rotation.y = 0; }
-  if (role === 'maid'){ n.g.position.set(NODES.CW[0], 0, NODES.CW[1] + (i ? .8 : -.8)); n.at = 'CW';
-    const cart = new THREE.Group(); cart.position.set(.6, 0, .2); n.g.add(cart);
-    B(.7,.45,.5, M(0xC9CED6,{metalness:.5, roughness:.4}), 0, .25, 0, cart);
-    CY(.12,.1,.22, M(0x3D7CC9), -.15, .5, 0, cart, 12); CY(.12,.1,.22, M(0xF5C542), .15, .5, 0, cart, 12); }
+  if (role === 'maid'){ const [x, z] = STAFF_ROOM.slots[i]; n.slot = i; n.g.position.set(x, 0, z + .9); n.g.rotation.y = Math.PI; n.at = 'SR'; n.state = 'idle'; attachCart(n); }
   if (role === 'chef'){ n.g.position.set(26.1, 0, -1.5 + (i ? -1.1 : .2)); n.g.rotation.y = Math.PI/2; }
   if (role === 'waiter'){ n.g.position.set(NODES.DW[0], 0, NODES.DW[1] + (i ? 1 : -1)); n.at = 'DW'; }
   n.tag.userData.set(staffName(role), 'rgba(43,179,177,.95)', '#10302F');
@@ -3168,15 +3322,15 @@ function staffTick(n, dt){
       n.cool = (n.cool || 0) - dt;
       // a camareira só entra em quarto sujo, sem outra camareira e sem hóspede dentro
       const room = n.cool <= 0 && allRooms().find(r => r.owned && r.state === 'dirty' && !r.maid && !r.guest && r.level <= G.staffLv.maid);
-      if (room){ room.maid = n; n.room = room; n.state = 'going'; toggleDoor(room, true); n.tag.userData.set(`Limpando ${room.id}`, 'rgba(43,179,177,.95)', '#10302F'); route(n, roomNode(room), [], () => { n.state = 'cleaning'; n.work = 0; }); }
+      if (room){ room.maid = n; n.room = room; n.state = 'going'; toggleDoor(room, true); n.tag.userData.set(`Limpando ${room.id}`, 'rgba(43,179,177,.95)', '#10302F'); route(n, cartNode(room), [], () => { parkCart(n); route(n, roomNode(room), [], () => { n.state = 'cleaning'; n.work = 0; }); }); }
     } else if (n.state === 'cleaning'){
       n.work += dt; if (!RM.matches) n.arms[1].rotation.x = -1 + Math.sin(T*10)*.5;
       if (n.work > 2.5){
         n.work = 0; const p = n.room.dirt[0]; if (p) cleanPiece(n.room, p, true);
         if (!n.room.dirt.length){
-          n.room.maid = null; n.state = 'back'; n.cool = [20,14,10][G.staffLv.maid - 1];
+          const done = n.room; n.room.maid = null; n.state = 'back'; n.cool = [20,14,10][G.staffLv.maid - 1];
           if (G.staffLv.maid >= 2) addRep(1);
-          n.tag.userData.set(staffName('maid'), 'rgba(43,179,177,.95)', '#10302F'); route(n, 'CW', [], () => { n.state = 'idle'; });
+          n.tag.userData.set(staffName('maid'), 'rgba(43,179,177,.95)', '#10302F'); route(n, cartNode(done), [], () => { grabCart(n); maidHome(n, () => { n.state = 'idle'; }); });
         }
       }
     }
@@ -3283,7 +3437,7 @@ $('touchE').addEventListener('pointerdown', e => { e.preventDefault(); interactN
 /* Movimento em primeira pessoa com colisão por eixo */
 const fw = new THREE.Vector3();
 let bob = 0, vy = 0, jumpH = 0;
-function jump(){ if (G.paused || pcOpen || CHOP.active || jumpH > 0) return; vy = 4.8; jumpH = .0001; }
+function jump(){ if (G.paused || pcOpen || CHOP.active || jumpH > 0 || SWIM.on) return; vy = 4.8; jumpH = .0001; }
 function move(dt){
   if (G.paused || pcOpen) return;
   const p = camera.position;
@@ -3293,23 +3447,28 @@ function move(dt){
   const r = CHOP.active ? 0 : (keys.KeyD || keys.ArrowRight || touchK.r ? 1 : 0) - (keys.KeyA || keys.ArrowLeft || touchK.l ? 1 : 0);
   const moving = f || r;
   if (moving){
-    const run = keys.ShiftLeft || keys.ShiftRight, sp = (run ? 7.5 : 4.2)*dt;
+    const run = keys.ShiftLeft || keys.ShiftRight, sp = (SWIM.on ? (run ? 2.6 : 1.9) : run ? 7.5 : 4.2)*dt;
     camera.getWorldDirection(fw); fw.y = 0; fw.normalize();
     let dx = fw.x*f - fw.z*r, dz = fw.z*f + fw.x*r; const len = Math.hypot(dx, dz); dx = dx/len*sp; dz = dz/len*sp;
     const stuck = blocked(p.x, p.z);
     if (stuck || !blocked(p.x + dx, p.z)) p.x += dx;
     if (stuck || !blocked(p.x, p.z + dz)) p.z += dz;
-    if (!jumpH) bob += dt*(run ? 13 : 9);
+    if (!jumpH) bob += dt*(SWIM.on ? 3 : run ? 13 : 9);
   }
-  const sway = moving && !jumpH && !RM.matches ? Math.sin(bob)*.035 : 0;
+  // piscina: ao cruzar a borda, splash e a altura dos olhos desce para logo acima da linha d'água
+  const swim = inPool(p.x, p.z);
+  if (swim !== SWIM.on){ SWIM.on = swim; jumpH = 0; vy = 0; splashSFX(swim ? .16 : .08); }
+  const sway = SWIM.on ? (RM.matches ? 0 : Math.sin(bob + performance.now()*.002)*.03) : moving && !jumpH && !RM.matches ? Math.sin(bob)*.035 : 0;
   const h = stairH(p.x, p.z);
   if (h !== null) PLAYER_LEVEL = stairLevel(p.x, p.z, PLAYER_LEVEL, h);
   // altura dos olhos acompanha o piso com suavização: sem salto ao entrar, subir ou sair da escada
-  const eyeTarget = 1.65 + (h !== null ? h : FLOOR_Y[PLAYER_LEVEL]);
-  eyeBase = eyeBase === null ? eyeTarget : eyeBase + (eyeTarget - eyeBase) * Math.min(1, dt*14);
+  const eyeTarget = SWIM.on ? -.08 : 1.65 + (h !== null ? h : FLOOR_Y[PLAYER_LEVEL]);
+  eyeBase = eyeBase === null ? eyeTarget : eyeBase + (eyeTarget - eyeBase) * Math.min(1, dt*(SWIM.on || eyeBase < 1 ? 5 : 14));
   p.y = eyeBase + jumpH + sway;
 }
 let eyeBase = null;
+const SWIM = {on:false};
+function splashSFX(vol){ if (SOUND.on) sfxNoise(.9, {f:1300, f2:300, q:.5, vol, att:.01}); }
 
 /* ============================================================
    MIRA · Raycaster do centro da tela (alcance 4 m, bloqueado por paredes)
@@ -4166,7 +4325,7 @@ function staffView(){
       evo = L < r.levels.length ? `<button data-evolve="${k}" ${G.money < r.levels[L].cost ? 'disabled' : ''}>Evoluir para Nv ${L + 1} · ${fmt(r.levels[L].cost)}</button>` : '<button disabled>Nível máximo</button>';
     }
     return `<div class="role"><h3>${r.name}</h3><p>${r.desc}</p>${lv}<span class="meta">Salário ${fmt(r.wage)}/dia · contratados ${G.staff[k]}/${r.max}</span>
-      <div class="btns"><button data-hire="${k}" ${full || poor ? 'disabled' : ''}>${full ? 'Equipe completa' : 'Contratar · ' + fmt(r.cost)}</button>${evo}</div></div>`;
+      <div class="btns"><button data-hire="${k}" ${full || poor ? 'disabled' : ''}>${full ? 'Equipe completa' : (k === 'maid' ? (G.staff.maid ? 'Contratar 2º faxineiro' : 'Contratar 1ª faxineira') : 'Contratar') + ' · ' + fmt(r.cost)}</button>${evo}</div></div>`;
   }).join('') + '</div>';
 }
 function upgView(){
@@ -6086,10 +6245,10 @@ function buildCity(){
   road(240, 12, 0, 58); road(240, 12, 0, 86);
 
   // 16 prédios em três fileiras; a fileira mais próxima tem vitrines voltadas para a avenida
-  const rows = [44, 72, 100], cols = [-78, -58, -20, 14, 36, 68];
+  const rows = [44, 72, 100], cols = [-100, -78, -58, -20, 14, 36, 68, 90];
   let n = 0;
   for (const z of rows) for (const x of cols){
-    if (n >= 16) break;
+    if (n >= 24) break;
     const w = 12 + rnd()*4, d = 14 + rnd()*2, h = 12 + Math.floor(rnd()*7)*5, tex0 = facades[Math.floor(rnd()*facades.length)];
     const rx = Math.max(1, Math.round(w/4)), ry = Math.max(1, Math.round(h/6));
     const mat = GFX.glow(new THREE.MeshStandardMaterial({map:rep(tex0, rx, ry), emissive:0xFFFFFF, emissiveMap:rep(tex0.glowMap, rx, ry), roughness:.85}), 'emissiveIntensity', 0, 1.6);
@@ -6143,36 +6302,193 @@ function buildCity(){
     });
   }
 
-  // carros: 3 no sentido leste (z 21.5) e 3 no oeste (z 28.5), dando a volta nas bordas
-  const CARS = [];
-  const carColors = [0xF2B630, 0x1F3A5F, 0xB8332C, 0xEFEFEF, 0xF2B630, 0x1F3A5F];
-  // faróis e lanternas compartilhados por todos os carros, acesos de verdade à noite
-  const headMat = GFX.glow(new THREE.MeshBasicMaterial({color:0xFFF4D0}), 'color', 1, 6);
-  const tailMat = GFX.glow(new THREE.MeshBasicMaterial({color:0xE23B2E}), 'color', 1, 4);
-  carColors.forEach((c, i) => {
-    const g = new THREE.Group(); scene.add(g);
-    B(1.9, .6, 4.2, new THREE.MeshStandardMaterial({color:c, roughness:.35, metalness:.4}), 0, .28, 0, g, false);
-    B(1.6, .5, 2.2, new THREE.MeshStandardMaterial({color:0x1A2633, roughness:.2, metalness:.5}), 0, .88, -.1, g, false);
-    const wheels = [];
-    for (const [wx, wz] of [[-.95,-1.3],[.95,-1.3],[-.95,1.3],[.95,1.3]]){
-      const holder = new THREE.Group(); holder.position.set(wx, .32, wz); holder.rotation.z = Math.PI/2; g.add(holder);
-      const w = new THREE.Mesh(new THREE.CylinderGeometry(.32, .32, .22, 10), M(0x1A1A1A, {roughness:.9})); holder.add(w); wheels.push(w);
-    }
-    B(.3, .12, .05, headMat, -.5, .5, 2.12, g, false); B(.3, .12, .05, headMat, .5, .5, 2.12, g, false);
-    B(.3, .12, .05, tailMat, -.6, .5, -2.12, g, false); B(.3, .12, .05, tailMat, .6, .5, -2.12, g, false);
-    const dir = i % 2 ? -1 : 1;
-    g.rotation.y = dir > 0 ? Math.PI/2 : -Math.PI/2;
-    CARS.push({g, wheels, dir, laneZ: dir > 0 ? 21.5 : 28.5, x: -110 + (i/carColors.length)*220, v: 8 + Math.random()*5});
+  buildCityRing(road, walk, deco, facades);
+  buildTraffic();
+}
+/* ============================================================
+   CIDADE AO REDOR DO HOTEL · avenidas nas laterais (x -38 e x 40) e rua nos fundos (z -44), com calçadas, faixas de
+   pedestre, postes e árvores; quarteirões de lojas térreas (vitrine, toldo, letreiro) com andares de escritórios e,
+   atrás delas, torres mais altas. Nada entra no terreno do hotel (x -30..32, z -34..14): é só cenário, sem colisão
+   ============================================================ */
+function buildCityRing(road, walk, deco, facades){
+  // chão urbano em volta do terreno (o terreno do hotel tem o seu gramado e a piscina)
+  const ground = M(0x8F8B83, {roughness:.95});
+  for (const [x1, z1, x2, z2] of [[-220, -220, -30, 220], [32, -220, 220, 220], [-30, -220, 32, -34], [-30, 36, 32, 220]]) deco(floor(x1, z1, x2, z2, ground, -.01));
+  // vias: avenidas laterais até a avenida da frente e rua dos fundos de ponta a ponta
+  road(10, 66, -38, -16); road(10, 66, 40, -16); road(240, 10, 0, -44);
+  walk(2, 64, -44, -17); walk(2, 46, -32, -12); walk(2, 64, 46, -17); walk(2, 46, 34, -12);
+  walk(240, 2, 0, -50); walk(64, 2, 1, -38);
+  const paint = c => new THREE.MeshStandardMaterial({color:c, roughness:.6, polygonOffset:true, polygonOffsetFactor:-2});
+  const yellow = paint(0xE8B530), white = paint(0xEDEDE6);
+  const stripe = (w, d, x, z, m) => { const q = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); q.rotation.x = -Math.PI/2; q.position.set(x, .015, z); deco(q); };
+  stripe(.12, 60, -38, -19, yellow); stripe(.12, 60, 40, -19, yellow); stripe(240, .12, 0, -44, yellow);
+  // faixas de pedestre nos cruzamentos
+  for (const [x, z, alongX] of [[-38, -36.6, true], [40, -36.6, true], [-38, 15.2, true], [40, 15.2, true], [-30.2, -44, false], [33.2, -44, false]])
+    for (let k = -4; k < 5; k++) alongX ? stripe(.5, 2.2, x + k*1, z, white) : stripe(2.2, .5, x, z + k*1, white);
+  // postes e árvores nas calçadas novas
+  const lampMat = GFX.glow(new THREE.MeshBasicMaterial({color:0xFFE2A8}), 'color', 1, 4);
+  const post = (x, z) => { deco(new THREE.Mesh(new THREE.CylinderGeometry(.06, .08, 4.6, 8), MAT.steelDark)).position.set(x, 2.3, z); deco(new THREE.Mesh(new THREE.SphereGeometry(.2, 8, 6), lampMat)).position.set(x, 4.8, z); };
+  for (let z = -46; z <= 10; z += 14){ post(-44.2, z); post(46.2, z); }
+  for (let x = -110; x <= 110; x += 15) post(x, -50.2);
+  const trees = [];
+  for (let z = -40; z <= 6; z += 14){ trees.push([-44.4, z + 7], [46.4, z + 7]); }
+  for (let x = -100; x <= 100; x += 20) trees.push([x + 7, -50.4]);
+  trees.forEach(([x, z], i) => {
+    const id = i % 3 === 2 ? 'maple' : 'oak';
+    loadModel(id).then(tpl => { if (!tpl) return; const t = placeModel(id, tpl, 5.4 + (i % 4)*.4); t.position.set(x, .12, z); t.rotation.y = i*1.7; t.traverse(o => { o.castShadow = o.receiveShadow = false; }); scene.add(t); });
   });
+  // lojas: térreo com vitrine, porta, toldo listrado e letreiro; andares de cima com janelas (acendem à noite)
+  const NAMES = ['Padaria Aurora', 'Farmácia Vida', 'Café Lumière', 'Boutique Maré', 'Mercado Central', 'Livraria Página', 'Sorveteria Gelato',
+    'Floricultura Jardim', 'Ótica Visão', 'Pizzaria Bella', 'Banco Atlântico', 'Joalheria Ouro', 'Sapataria Passo', 'Surf & Sol', 'Cinema Estrela',
+    'Restaurante Sabor', 'Perfumaria Brisa', 'Galeria de Arte', 'Pet Shop Amigo', 'Doceria Mel', 'Academia Forma', 'Papelaria Traço', 'Empório Natural', 'Barbearia Navalha'];
+  const PALETTE = [['#B8332C', '#F6EFE3'], ['#1F3A5F', '#F5C542'], ['#2BB3B1', '#FFFFFF'], ['#3FA35F', '#F6EFE3'], ['#2A1B14', '#D8A64A'], ['#E86A5A', '#FFFFFF'], ['#6A2F5E', '#F6EFE3'], ['#F2A93B', '#2A1B14']];
+  const glass = new THREE.MeshStandardMaterial({color:0xBFDDEA, roughness:.04, metalness:.6, transparent:true, opacity:.22});
+  const frameM = M(0x2E3438, {metalness:.6, roughness:.35}), stoneM = M(0xD9D2C4, {roughness:.8});
+  const goods = [0xF2B630, 0xE86A5A, 0x3D7CC9, 0x3FA35F, 0xFFFFFF, 0x6A2F5E];
+  let si = 0;
+  function shop(x, z, ry, w, d, h){
+    const name = NAMES[si % NAMES.length], [c1, c2] = PALETTE[si % PALETTE.length], fac = facades[si % facades.length]; si++;
+    const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = ry; scene.add(g);
+    const rx = Math.max(1, Math.round(w/4)), ryy = Math.max(1, Math.round((h - 4.5)/6));
+    const upper = GFX.glow(new THREE.MeshStandardMaterial({map:rep(fac, rx, ryy), emissive:0xFFFFFF, emissiveMap:rep(fac.glowMap, rx, ryy), roughness:.85}), 'emissiveIntensity', 0, 1.6);
+    B(w, h - 4.5, d, upper, 0, 4.5, 0, g, false); B(w, 4.5, d, stoneM, 0, 0, 0, g, false);
+    B(w + .3, .35, d + .3, M(0x6E767E, {roughness:.6}), 0, h, 0, g, false);                       // platibanda
+    B(w + .1, .25, .3, stoneM, 0, 4.4, d/2 + .1, g, false);                                     // cornija do térreo
+    const fz = d/2 + .02, gw = w - 1.6;
+    B(gw, 2.9, .03, glass, -.5, .35, fz + .03, g, false);
+    for (let k = 0; k <= 3; k++) B(.08, 2.9, .1, frameM, -.5 - gw/2 + gw*k/3, .35, fz + .01, g, false);
+    B(gw, .08, .1, frameM, -.5, 3.25, fz + .01, g, false); B(gw, .35, .12, stoneM, -.5, 0, fz, g, false);
+    B(1.0, 2.6, .08, M(0x2A1B14, {roughness:.5}), w/2 - .75, 0, fz, g, false);                    // porta
+    // vitrine: interior iluminado pintado atrás do vidro (prateleiras, produtos e balcão), aceso também à noite
+    const inside = tex(512, (c, W, H) => { const gr = c.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#FFF3DC'); gr.addColorStop(1, '#C9A983'); c.fillStyle = gr; c.fillRect(0, 0, W, H);
+      c.fillStyle = 'rgba(255,255,255,.55)'; for (let k = 0; k < 4; k++) c.fillRect(30 + k*120, 8, 70, 10);
+      for (let r = 0; r < 3; r++){ const y = 60 + r*70; c.fillStyle = '#8A6A4A'; c.fillRect(20, y + 40, W - 40, 8);
+        for (let k = 0; k < 14; k++){ const col = '#' + goods[(si + k + r) % goods.length].toString(16).padStart(6, '0'); c.fillStyle = col; const hh = 18 + (k*7 + r*5) % 22; c.fillRect(30 + k*33, y + 40 - hh, 24, hh); } }
+      c.fillStyle = '#5A4632'; c.fillRect(W*.55, H*.72, W*.4, H*.28); c.fillStyle = '#3A2E25'; for (let k = 0; k < 3; k++){ c.beginPath(); c.arc(80 + k*110, H*.74, 16, 0, 7); c.fill(); c.fillRect(66 + k*110, H*.74, 28, H*.26); } }, 256);
+    B(gw, 2.9, .02, GFX.glow(new THREE.MeshStandardMaterial({map:inside, emissive:0xFFFFFF, emissiveMap:inside, roughness:.9}), 'emissiveIntensity', .25, .8), -.5, .35, fz - .01, g, false);
+    // toldo listrado inclinado
+    const aw = tex(256, (c, W, H) => { for (let k = 0; k < 8; k++){ c.fillStyle = k % 2 ? c2 : c1; c.fillRect(k*W/8, 0, W/8, H); } c.fillStyle = c1; c.fillRect(0, H*.82, W, H*.18); }, 128);
+    const awn = B(w - .4, .05, 1.3, M(0xFFFFFF, {map:aw, roughness:.9, side:THREE.DoubleSide}), 0, 3.35, fz + .6, g, false); awn.rotation.x = .32;
+    // letreiro com o nome da loja
+    const sg = tex(512, (c, W, H) => { c.fillStyle = c1; c.fillRect(0, 0, W, H); c.strokeStyle = c2; c.lineWidth = 8; c.strokeRect(10, 10, W - 20, H - 20);
+      c.fillStyle = c2; c.font = `bold ${name.length > 14 ? 50 : 60}px Gloock, Georgia, serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(name, W/2, H/2 + 4); }, 112);
+    B(Math.min(w - 1, 7), .9, .12, GFX.glow(new THREE.MeshStandardMaterial({map:sg, emissive:0xFFFFFF, emissiveMap:sg, roughness:.6}), 'emissiveIntensity', .05, .9), 0, 3.75, fz + .08, g, false);
+    // vasos com plantas na calçada
+    for (const sx of [-1, 1]){ CY(.28, .22, .5, M(0x5A5F66, {roughness:.7}), sx*(w/2 - .5), 0, fz + .45, g, 14); SPH(.32, MAT.hedge, sx*(w/2 - .5), .75, fz + .45, g, 10); }
+    g.traverse(o => { o.castShadow = o.receiveShadow = false; });
+  }
+  function tower(x, z, w, d, h){
+    const fac = facades[(si + 1) % facades.length], rx = Math.max(1, Math.round(w/4)), ry = Math.max(1, Math.round(h/6));
+    const mat = GFX.glow(new THREE.MeshStandardMaterial({map:rep(fac, rx, ry), emissive:0xFFFFFF, emissiveMap:rep(fac.glowMap, rx, ry), roughness:.85}), 'emissiveIntensity', 0, 1.6);
+    deco(B(w, h, d, mat, x, 0, z, scene, false)); deco(B(w*.8, 1.4, d*.6, MAT.steelDark, x, h, z, scene, false)); si++;
+  }
+  // lado oeste (frente das lojas para a avenida x -38) e, atrás, torres
+  [-31, -18, -5, 7].forEach((z, i) => shop(-45.2 - 6, z, Math.PI/2, 12, 12, 10 + (i % 3)*4));
+  [-31, -14, 3].forEach((z, i) => tower(-74 - (i % 2)*8, z, 14, 14, 26 + i*8));
+  // lado leste
+  [-31, -18, -5, 7].forEach((z, i) => shop(47.2 + 6, z, -Math.PI/2, 12, 12, 9 + ((i + 1) % 3)*4));
+  [-31, -14, 3].forEach((z, i) => tower(78 + (i % 2)*8, z, 14, 14, 30 + i*6));
+  // fundos (frente das lojas para a rua z -44)
+  [-104, -88, -72, -56, -22, -6, 10, 26, 58, 74, 90, 106].forEach((x, i) => shop(x, -51.2 - 6, 0, 13, 12, 9 + (i % 4)*3));
+  [-96, -66, -36, -4, 28, 62, 96].forEach((x, i) => tower(x, -84 - (i % 2)*10, 16, 16, 24 + (i % 3)*10));
+  // laterais da cidade, além das avenidas, até a avenida da frente
+  [-31, -14, 3].forEach((z, i) => { tower(-104, z, 14, 14, 20 + i*7); tower(108, z, 14, 14, 22 + i*6); });
+}
+/* ============================================================
+   TRÂNSITO · carros feitos de perfil extrudado (carroceria com capô, para-lamas e porta-malas, cabine de vidro e
+   teto), rodas com pneu, aro cromado e calota, para-choques cromados, grade, faróis, lanternas, retrovisores e placa.
+   Três estilos próprios: clássico dos anos 60, sedã e minivan. Rodam na avenida da frente, nas laterais e nos fundos
+   ============================================================ */
+const CAR_STYLES = {
+  classic:{len:4.6, w:1.85, body:[[-2.3,.32],[2.3,.32],[2.36,.5],[2.3,.7],[1.0,.82],[-1.7,.84],[-2.3,.74],[-2.38,.5]], cabin:[[-1.45,.8],[.55,.8],[.15,1.3],[-1.15,1.32]], round:true},
+  sedan:{len:4.5, w:1.82, body:[[-2.25,.3],[2.25,.3],[2.3,.55],[2.15,.78],[.95,.86],[-1.85,.88],[-2.25,.8],[-2.3,.55]], cabin:[[-1.55,.84],[.9,.84],[.25,1.38],[-1.0,1.4]]},
+  mpv:{len:4.6, w:1.88, body:[[-2.3,.3],[2.3,.3],[2.35,.58],[2.15,.84],[1.7,.9],[-2.25,.92],[-2.32,.6]], cabin:[[-2.2,.88],[1.65,.88],[.55,1.72],[-2.1,1.76]]},
+};
+const CAR_PAINT = [0xB8332C, 0x1F3A5F, 0xF2B630, 0xEFEFEF, 0x2E6B4F, 0x7FB6C9, 0x2A2A2E, 0xC9A37A, 0x8E1F2F, 0x4A5566];
+function extrudeSide(pts, width, bevel){
+  const sh = new THREE.Shape(); sh.moveTo(pts[0][0], pts[0][1]); for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]); sh.lineTo(pts[0][0], pts[0][1]);
+  const geo = new THREE.ExtrudeGeometry(sh, {depth:width - 2*bevel, bevelEnabled:true, bevelThickness:bevel, bevelSize:bevel*.8, bevelSegments:3, curveSegments:8});
+  geo.rotateY(-Math.PI/2); geo.translate((width - 2*bevel)/2, 0, 0); geo.computeVertexNormals(); return geo;
+}
+const CAR_MAT = {};
+function carMats(){
+  if (CAR_MAT.chrome) return CAR_MAT;
+  CAR_MAT.chrome = new THREE.MeshStandardMaterial({color:0xE6EBF0, metalness:1, roughness:.12});
+  CAR_MAT.glass = new THREE.MeshPhysicalMaterial({color:0x1B2733, metalness:.4, roughness:.04, clearcoat:1, transparent:true, opacity:.88});
+  CAR_MAT.tire = new THREE.MeshStandardMaterial({color:0x141414, roughness:.92});
+  CAR_MAT.dark = new THREE.MeshStandardMaterial({color:0x1D1F22, roughness:.6});
+  CAR_MAT.head = GFX.glow(new THREE.MeshBasicMaterial({color:0xFFF4D0}), 'color', 1, 6);
+  CAR_MAT.tail = GFX.glow(new THREE.MeshBasicMaterial({color:0xE23B2E}), 'color', 1, 4);
+  CAR_MAT.plate = new THREE.MeshStandardMaterial({map:tex(128, (c, w, h) => { c.fillStyle = '#F4F4F0'; c.fillRect(0, 0, w, h); c.fillStyle = '#1F3A8F'; c.fillRect(0, 0, w, h*.22); c.fillStyle = '#222'; c.font = 'bold 30px monospace'; c.textAlign = 'center'; c.fillText('GRT 2A26', w/2, h*.78); }, 48), roughness:.5});
+  return CAR_MAT;
+}
+function makeCar(style, color){
+  const S = CAR_STYLES[style], K = carMats(), g = new THREE.Group(), L = S.len/2, W = S.w;
+  const paint = new THREE.MeshPhysicalMaterial({color, metalness:.35, roughness:.32, clearcoat:1, clearcoatRoughness:.08});
+  const body = new THREE.Mesh(extrudeSide(S.body, W, .08), paint); g.add(body);
+  const cab = new THREE.Mesh(extrudeSide(S.cabin, W - .16, .05), K.glass); g.add(cab);
+  // teto e colunas na cor da carroceria por cima do vidro
+  const top = S.cabin.slice().sort((a, b) => b[1] - a[1]).slice(0, 2).sort((a, b) => a[0] - b[0]);
+  B(W - .1, .06, top[1][0] - top[0][0] + .08, paint, 0, Math.min(top[0][1], top[1][1]) - .02, (top[0][0] + top[1][0])/2, g, false);
+  B(W - .1, Math.min(top[0][1], top[1][1]) - S.cabin[0][1], .08, paint, 0, S.cabin[0][1], (top[0][0] + top[1][0])/2 - .1, g, false);   // coluna central
+  // para-choques, grade, faróis, lanternas, placa e retrovisores
+  for (const sz of [1, -1]){
+    const z = sz*(L + .05);
+    B(W - .1, .14, .14, K.chrome, 0, .34, z, g, false);
+  }
+  B(.52, .14, .03, K.plate, 0, .38, L + .13, g, false); B(.52, .14, .03, K.plate, 0, .38, -L - .13, g, false).rotation.y = Math.PI;
+  const frontY = S.body.find(p => p[0] > L - .1)[1] + .05;
+  B(W*.42, .2, .05, K.dark, 0, frontY - .02, L + .04, g, false);                                    // grade
+  for (let k = -2; k <= 2; k++) B(.02, .18, .06, K.chrome, k*W*.08, frontY - .01, L + .045, g, false);
+  for (const sx of [-1, 1]){
+    if (S.round){ const hl = new THREE.Mesh(new THREE.CircleGeometry(.11, 20), K.head); hl.position.set(sx*W*.36, frontY + .08, L + .07); g.add(hl);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(.115, .018, 6, 20), K.chrome); ring.position.copy(hl.position); g.add(ring); }
+    else B(.36, .12, .04, K.head, sx*W*.33, frontY + .04, L + .05, g, false);
+    B(.24, .12, .04, K.tail, sx*W*.36, .62, -L - .07, g, false);
+    B(.16, .1, .06, paint, sx*(W/2 + .06), S.cabin[1][1] + .1, S.cabin[1][0] - .15, g, false);
+  }
+  // rodas: pneu, aro cromado e calota, viradas para girar no eixo x do carro
+  const wheels = [], wb = L*.66;
+  for (const [sx, sz] of [[-1, 1], [1, 1], [-1, -1], [1, -1]]){
+    const holder = new THREE.Group(); holder.position.set(sx*(W/2 - .08), .33, sz*wb); holder.rotation.z = Math.PI/2; g.add(holder);
+    const w = new THREE.Group(); holder.add(w); wheels.push(w);
+    w.add(new THREE.Mesh(new THREE.CylinderGeometry(.33, .33, .22, 24), K.tire));
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(.21, .21, .235, 20), K.chrome); w.add(rim);
+    for (let k = 0; k < 5; k++){ const sp = new THREE.Mesh(new THREE.BoxGeometry(.04, .24, .3), K.dark); sp.rotation.y = k*Math.PI/5; w.add(sp); }
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(.08, .08, .25, 14), K.chrome); w.add(cap);
+    // caixa de roda escura por trás do pneu
+    const arch = new THREE.Mesh(new THREE.CylinderGeometry(.38, .38, .05, 20, 1, false, 0, Math.PI), K.dark);
+    arch.rotation.set(Math.PI/2, 0, Math.PI/2); arch.position.set(sx*(W/2 - .1), .33, sz*wb); g.add(arch);
+  }
+  g.traverse(o => { if (o.isMesh){ o.castShadow = true; o.receiveShadow = false; } });
+  return {g, wheels};
+}
+function buildTraffic(){
+  const CARS = [], styles = ['classic', 'sedan', 'mpv'];
+  // vias: eixo do movimento, coordenada da faixa, sentido, limites e quantos carros
+  const LANES = [
+    {axis:'x', lane:21.5, dir:1, a:-110, b:110, n:4}, {axis:'x', lane:28.5, dir:-1, a:-110, b:110, n:4},
+    {axis:'x', lane:-41.5, dir:1, a:-115, b:115, n:3}, {axis:'x', lane:-46.5, dir:-1, a:-115, b:115, n:3},
+    {axis:'z', lane:-40.5, dir:1, a:-44, b:14, n:1}, {axis:'z', lane:-35.5, dir:-1, a:-44, b:14, n:1},
+    {axis:'z', lane:37.5, dir:-1, a:-44, b:14, n:1}, {axis:'z', lane:42.5, dir:1, a:-44, b:14, n:1},
+  ];
+  let k = 0;
+  for (const L of LANES) for (let i = 0; i < L.n; i++, k++){
+    const {g, wheels} = makeCar(styles[k % 3], CAR_PAINT[k % CAR_PAINT.length]); scene.add(g);
+    g.rotation.y = L.axis === 'x' ? (L.dir > 0 ? Math.PI/2 : -Math.PI/2) : (L.dir > 0 ? 0 : Math.PI);
+    CARS.push({g, wheels, L, s:L.a + (i + .5)/L.n*(L.b - L.a) + (k*7.3 % 5), v:7 + (k*3.7 % 5)});
+  }
+  const place = c => c.L.axis === 'x' ? c.g.position.set(c.s, 0, c.L.lane) : c.g.position.set(c.L.lane, 0, c.s);
+  CARS.forEach(place);
   ANIM.push((dt) => {
-    if (RM.matches) { CARS.forEach(c => c.g.position.set(c.x, 0, c.laneZ)); return; }
+    if (RM.matches) return;
+    const p = camera.position;
     CARS.forEach(c => {
+      const L = c.L;
       // freia para o jogador: parado na faixa até 7 m à frente, o carro espera
-      const p = camera.position, ahead = (p.x - c.x)*c.dir;
-      if (Math.abs(p.z - c.laneZ) < 1.6 && ahead > 0 && ahead < 7) return;
-      c.x += c.dir*c.v*dt; if (c.x > 110) c.x -= 220; if (c.x < -110) c.x += 220;
-      c.g.position.set(c.x, 0, c.laneZ);
-      c.wheels.forEach(w => w.rotation.y += c.dir*c.v*dt/.32);
+      if (L.axis === 'x' && Math.abs(p.z - L.lane) < 1.6){ const ahead = (p.x - c.s)*L.dir; if (ahead > 0 && ahead < 7) return; }
+      c.s += L.dir*c.v*dt; const span = L.b - L.a; if (c.s > L.b) c.s -= span; if (c.s < L.a) c.s += span;
+      place(c); c.wheels.forEach(w => w.rotation.y += c.v*dt/.33);
     });
   });
 }
@@ -6243,7 +6559,7 @@ class SaveSystem {
       G.upg = Object.assign({bar:false, floor:false, light:false}, d.upg);
       G.staffLv = Object.assign({recep:1, maid:1}, d.staffLv);
       for (const k of Object.keys(G.upg)) if (G.upg[k]) applyUpgrade(k);   // antes das salas: buildRoom usa G.upg.light
-      ROOMS.forEach((r, i) => { const s = d.rooms && d.rooms[i]; if (s){ r.owned = s.owned; r.level = s.level; loadDecor(r, s); buildRoom(r); } });
+      ROOMS.forEach((r, i) => { const s = d.rooms && d.rooms[i]; if (s){ r.owned = s.owned; r.level = s.level; initDecor(r, roomBase(r)); loadDecor(r, s); buildRoom(r); } });
       UPPER2.forEach((r, i) => { const s = d.upper2 && d.upper2[i]; if (s){ r.owned = !!s.owned; r.level = s.owned ? Math.min(3, Math.max(1, s.level || 1)) : 0; initDecor(r, roomBase(r)); loadDecor(r, s); buildRoom(r); } });
       UPPER.forEach((r, i) => { const s = d.upper && d.upper[i]; if (s){ r.owned = !!s.owned; r.level = s.owned ? Math.min(3, Math.max(1, s.level || 1)) : 0; initDecor(r, roomBase(r)); loadDecor(r, s); buildRoom(r); } });
       for (const role of Object.keys(ROLES)) for (let i = 0; i < Math.min((d.staff && d.staff[role]) || 0, ROLES[role].max); i++){ G.staff[role]++; spawnStaff(role, i); }
@@ -6644,13 +6960,13 @@ function waiterTick(n, dt){
    sozinho os pedidos que esperam demais, e sem gorjeta.
    ============================================================ */
 const BAR_ING = {
-  cachaca:{n:'Cachaça', c:0xF4F1E2, alc:1, w:1}, rum:{n:'Rum branco', c:0xF4F0E4, alc:1, w:1}, tequila:{n:'Tequila', c:0xF4EFD8, alc:1, w:1},
-  vodka:{n:'Vodka', c:0xF6F6F6, alc:1, w:1}, gim:{n:'Gim', c:0xF0F6F8, alc:1, w:1}, licorlaranja:{n:'Licor de laranja', c:0xF2A33A, alc:1, w:2},
+  cachaca:{n:'Cachaça', c:0xF4F1E2, alc:1, w:.35}, rum:{n:'Rum branco', c:0xF4F0E4, alc:1, w:.35}, tequila:{n:'Tequila', c:0xF4EFD8, alc:1, w:.35},
+  vodka:{n:'Vodka', c:0xF6F6F6, alc:1, w:.35}, gim:{n:'Gim', c:0xF0F6F8, alc:1, w:.35}, licorlaranja:{n:'Licor de laranja', c:0xF2A33A, alc:1, w:2},
   aperol:{n:'Aperol', c:0xF26A1B, alc:1, w:4}, espumante:{n:'Espumante', c:0xF4E6A2, alc:1, w:2},
-  limao:{n:'Limão', c:0xD8E87A, w:1}, hortela:{n:'Hortelã', c:0x5DBB63, w:1}, abacaxi:{n:'Suco de abacaxi', c:0xF6D860, w:3}, maracuja:{n:'Maracujá', c:0xF2C230, w:3},
+  limao:{n:'Limão', c:0xC9E35A, w:1.4}, hortela:{n:'Hortelã', c:0x5DBB63, w:1}, abacaxi:{n:'Suco de abacaxi', c:0xF6D860, w:3}, maracuja:{n:'Maracujá', c:0xF5B91E, w:3},
   morango:{n:'Morango', c:0xE8455A, w:4}, laranja:{n:'Suco de laranja', c:0xF7A030, w:3}, cranberry:{n:'Suco de cranberry', c:0xC2203F, w:4}, aguacoco:{n:'Água de coco', c:0xEEF2E6, w:2},
   acucar:{n:'Açúcar', c:0xFFFFFF, w:0}, coco:{n:'Leite de coco', c:0xF8F4EA, w:3, cream:1}, leitecond:{n:'Leite condensado', c:0xF6EFD8, w:2, cream:1},
-  groselha:{n:'Xarope de groselha', c:0xC8102E, w:5}, gas:{n:'Água com gás', c:0xEAF6FA, w:1}, tonica:{n:'Água tônica', c:0xEAF6FA, w:1},
+  groselha:{n:'Xarope de groselha', c:0xB80F2A, w:5}, gas:{n:'Água com gás', c:0xEAF6FA, w:1}, tonica:{n:'Água tônica', c:0xEAF6FA, w:1},
 };
 const BAR_ING_GROUPS = [['Destilados e licores', ['cachaca','rum','tequila','vodka','gim','licorlaranja','aperol','espumante']], ['Frutas, sucos e ervas', ['limao','hortela','abacaxi','maracuja','morango','laranja','cranberry','aguacoco']], ['Complementos', ['acucar','coco','leitecond','groselha','gas','tonica']]];
 const BAR_DOSE = {30:'Simples · 30 ml', 50:'Padrão · 50 ml', 60:'Dupla · 60 ml'};
@@ -6803,34 +7119,50 @@ const GGEO = {}, GMAT = {};
 const gGeo = (k, f) => GGEO[k] || (GGEO[k] = f()), gmat = (k, f) => GMAT[k] || (GMAT[k] = f());
 function glassAt(id, y){ const p = BAR_GLASSES[id].p; for (let i = 1; i < p.length; i++) if (p[i][1] >= y){ const [r0, y0] = p[i - 1], [r1, y1] = p[i], t = (y - y0)/((y1 - y0) || 1); return r0 + (r1 - r0)*t; } return p[p.length - 1][0]; }
 function liquidLevel(id){ const gl = BAR_GLASSES[id], p = gl.p.slice(gl.b); return p[0][1] + (p[p.length - 1][1] - p[0][1])*gl.f; }
-function liquidGeo(id){
-  const gl = BAR_GLASSES[id], p = gl.p.slice(gl.b), y0 = p[0][1], lv = liquidLevel(id), pts = [[0, y0 + .003]];
-  for (let i = 0; i < p.length; i++){
-    const [r, y] = p[i];
-    if (y >= lv){ const [ra, ya] = i ? p[i - 1] : p[i], t = (lv - ya)/((y - ya) || 1); pts.push([Math.max(.001, ra + (r - ra)*t - .003), lv]); break; }
-    pts.push([Math.max(.001, r - .003), Math.max(y, y0 + .003)]);
-  }
-  pts.push([0, lv]);
-  return LATHE(pts, 28);
+const liqTone = c => { const k = new THREE.Color(c), h = {}; k.getHSL(h); return k.setHSL(h.h, Math.min(1, h.s*1.35 + .05), h.l > .85 ? h.l*.97 : h.l*.82).getHex(); };
+function liquidGeo(id, a = 0, b = 1){
+  const gl = BAR_GLASSES[id], p = gl.p.slice(gl.b), y0 = p[0][1] + .003, full = liquidLevel(id);
+  const ya = y0 + (full - y0)*a, yb = y0 + (full - y0)*b, rAt = y => Math.max(.001, glassAt(id, y) - .003);
+  const pts = [[0, ya]];
+  [ya, ...p.map(q => q[1]).filter(y => y > ya && y < yb), yb].forEach(y => pts.push([rAt(y), y]));
+  pts.push([0, yb]);
+  return LATHE(pts, 32);
 }
 function drinkModel(mix){
   const id = BAR_GLASSES[mix.glass] ? mix.glass : 'highball', gl = BAR_GLASSES[id], g = new THREE.Group();
-  const R = gl.p[gl.p.length - 1][0], top = gl.p[gl.p.length - 1][1], lv = liquidLevel(id), rl = Math.max(.012, glassAt(id, lv) - .004);
+  const R = gl.p[gl.p.length - 1][0], top = gl.p[gl.p.length - 1][1], lv0 = liquidLevel(id), lv = gl.p.slice(gl.b)[0][1] + (lv0 - gl.p.slice(gl.b)[0][1])*(mix.fill === undefined ? 1 : mix.fill), rl = Math.max(.012, glassAt(id, lv) - .004);
   const shell = gl.mat === 'tiki' ? gmat('tiki', () => PHYS(0x7A3E1E, {roughness:.4, clearcoat:.9, side:THREE.DoubleSide}))
     : gl.mat === 'coco' ? gmat('coco', () => PHYS(0x5E3E22, {roughness:.95, side:THREE.DoubleSide}))
     : gl.mat === 'abacaxi' ? gmat('abacaxi', () => PHYS(0xC8962E, {roughness:.75, side:THREE.DoubleSide}))
     : gl.mat === 'plastico' ? gmat('plastico', () => GLASS(0xF4F7F9, .45, {roughness:.4, clearcoat:0}))
-    : gmat('cristal', () => GLASS(0xF6FBFF, .2));
+    : gmat('cristal', () => GLASS(0xF6FBFF, .13, {envMapIntensity:.55}));
   const body = new THREE.Mesh(gGeo('g_' + id, () => LATHE(gl.p, 32)), shell); body.renderOrder = 3; g.add(body);
   const put = (geo, mat, x, y, z, par = g) => { const o = new THREE.Mesh(geo, mat); o.position.set(x, y, z); par.add(o); return o; };
   const sphere = gGeo('esf', () => new THREE.SphereGeometry(1, 12, 8));
   if (gl.mat === 'abacaxi'){ const leaf = gmat('folha', () => PHYS(0x3E7A2E, {roughness:.6}));
     for (let i = 0; i < 7; i++){ const a = i/7*Math.PI*2, l = put(gGeo('folhaAb', () => new THREE.ConeGeometry(.01, .08, 4)), leaf, Math.cos(a)*(R - .008), top + .03, Math.sin(a)*(R - .008)); l.rotation.set(Math.sin(a)*.5, 0, -Math.cos(a)*.5); } }
   const ing = mix.ing || [];
-  if (ing.length){
-    const cream = ing.some(k => BAR_ING[k] && BAR_ING[k].cream) || mix.method === 'bater', col = mixColor(ing);
-    const lm = gmat('liq' + col + (cream ? 'c' : ''), () => PHYS(col, {roughness:cream ? .55 : .1, transparent:true, opacity:cream ? .95 : .72, clearcoat:cream ? 0 : .5, depthWrite:false}));
-    const lq = put(gGeo('l_' + id, () => liquidGeo(id)), lm, 0, 0, 0); lq.renderOrder = 2;
+  const fill = mix.fill === undefined ? 1 : mix.fill;
+  if (ing.length && fill > .005){
+    // líquido de verdade: claro e translúcido (com transmissão e brilho) ou cremoso e opaco; com xarope de groselha
+    // e outros ingredientes, a groselha desce e forma a camada vermelha do fundo (degradê do Sunset)
+    const cream = ing.some(k => BAR_ING[k] && BAR_ING[k].cream) || mix.method === 'bater';
+    const layered = !cream && ing.includes('groselha') && ing.length > 1, rest = layered ? ing.filter(k => k !== 'groselha') : ing;
+    const liqMat = c => gmat('liq' + c + (cream ? 'c' : ''), () => cream ? PHYS(c, {roughness:.5, clearcoat:.2, envMapIntensity:.35})
+      : PHYS(liqTone(c), {roughness:.12, metalness:0, transparent:true, opacity:.9, clearcoat:.35, clearcoatRoughness:.1, envMapIntensity:.3, depthWrite:false, emissive:new THREE.Color(liqTone(c)).multiplyScalar(.12)}));
+    const own = geo => { (g.userData.own = g.userData.own || []).push(geo); return geo; };   // geometria só desta cópia: liberada ao refazer
+    if (layered){
+      const cut = Math.min(fill, .3);
+      put(own(liquidGeo(id, 0, cut)), liqMat(BAR_ING.groselha.c), 0, 0, 0).renderOrder = 2;
+      if (fill > cut + .01){ put(own(liquidGeo(id, cut, Math.min(fill, cut + .1))), liqMat(mixColor(rest.concat('groselha'))), 0, 0, 0).renderOrder = 2;
+        if (fill > cut + .1) put(own(liquidGeo(id, cut + .1, fill)), liqMat(mixColor(rest)), 0, 0, 0).renderOrder = 2; }
+    } else put(fill >= 1 ? gGeo('l_' + id, () => liquidGeo(id)) : own(liquidGeo(id, 0, fill)), liqMat(mixColor(ing)), 0, 0, 0).renderOrder = 2;
+    const y0 = gl.p.slice(gl.b)[0][1], lvl = y0 + (lv - y0)*fill;
+    // limão macerado: gomos verdes no fundo do copo
+    if (ing.includes('limao') && mix.method === 'macerar') for (let i = 0; i < 4; i++){ const a = i*1.7, w = put(gGeo('gomo', () => new THREE.SphereGeometry(1, 10, 6, 0, Math.PI)), gmat('gomo', () => PHYS(0x7DBB2E, {roughness:.45, clearcoat:.6})), Math.cos(a)*rl*.45, y0 + .012 + (i % 2)*.01, Math.sin(a)*rl*.45); w.scale.set(.016, .011, .011); w.rotation.set(i, a, .4); }
+    // bolhas subindo nas bebidas com gás
+    if (ing.some(k => k === 'gas' || k === 'tonica' || k === 'espumante')){ const bm = gmat('bolha', () => PHYS(0xFFFFFF, {roughness:0, transparent:true, opacity:.6, depthWrite:false}));
+      for (let i = 0; i < 14; i++){ const a = i*2.39, rr = rl*.7*Math.sqrt((i + .5)/14), b = put(sphere, bm, Math.cos(a)*rr, y0 + (lvl - y0)*((i*.37) % 1), Math.sin(a)*rr); b.scale.setScalar(.0018 + (i % 3)*.0007); b.userData.bub = {y0, y1:lvl, sp:.02 + (i % 4)*.008}; } }
   }
   const iceM = gmat('gelo', () => PHYS(0xF2FAFF, {roughness:.08, transparent:true, opacity:.55, clearcoat:1, depthWrite:false}));
   if (mix.ice === 'cubos') for (let i = 0; i < 3; i++){ const a = i*2.1, c = put(gGeo('cubo', () => new THREE.BoxGeometry(.02, .02, .02)), iceM, Math.cos(a)*rl*.45, lv - .008 - (i % 2)*.012, Math.sin(a)*rl*.45); c.rotation.set(i*.7, i*1.3, i*.4); c.renderOrder = 4; }
@@ -6992,8 +7324,16 @@ function mixInit3D(){
 }
 function mixUpdate3D(){
   if (!mixInit3D()) return;
-  if (MIX3D.model) MIX3D.s.remove(MIX3D.model);
-  MIX3D.model = drinkModel(BARMIX.mix); MIX3D.s.add(MIX3D.model);
+  const m = BARMIX.mix, n = (m.ing || []).length;
+  MIX3D.target = n ? Math.min(1, .25 + .28*n) : 0;
+  if (MIX3D.fill === undefined || MIX3D.glass !== m.glass) MIX3D.fill = 0;   // copo novo começa vazio
+  MIX3D.glass = m.glass; MIX3D.pourCol = n ? BAR_ING[m.ing[n - 1]].c : 0xFFFFFF;
+  mixRebuild();
+}
+function mixRebuild(){
+  if (MIX3D.model){ MIX3D.s.remove(MIX3D.model); (MIX3D.model.userData.own || []).forEach(g => g.dispose()); }
+  MIX3D.model = drinkModel(Object.assign({}, BARMIX.mix, {fill:MIX3D.fill || 0})); MIX3D.s.add(MIX3D.model);
+  if (!MIX3D.stream){ MIX3D.stream = new THREE.Mesh(new THREE.CylinderGeometry(.0028, .0035, 1, 10), new THREE.MeshPhysicalMaterial({color:0xFFFFFF, roughness:.05, transparent:true, opacity:.85, clearcoat:1})); MIX3D.s.add(MIX3D.stream); }
 }
 function mixFrame(){
   if (!BARMIX.open || !MIX3D.r){ MIX3D.raf = 0; return; }
@@ -7001,6 +7341,15 @@ function mixFrame(){
   if (w && h && (cv.width !== Math.round(w*pr) || cv.height !== Math.round(h*pr))){ r.setSize(w, h, false); MIX3D.cam.aspect = w/h; MIX3D.cam.updateProjectionMatrix(); }
   MIX3D.cam.position.set(0, .2, .62); MIX3D.cam.lookAt(0, .1, 0);
   if (MIX3D.model && !RM.matches) MIX3D.model.rotation.y += .008;
+  // enchendo: o nível sobe suave até o alvo e o filete cai da altura da garrafa até a superfície
+  const tg = MIX3D.target || 0, pouring = Math.abs(tg - (MIX3D.fill || 0)) > .004;
+  if (pouring){ MIX3D.fill = RM.matches ? tg : (MIX3D.fill || 0) + Math.sign(tg - MIX3D.fill)*Math.min(Math.abs(tg - MIX3D.fill), .012); mixRebuild(); }
+  if (MIX3D.stream){ const id = BAR_GLASSES[BARMIX.mix.glass] ? BARMIX.mix.glass : 'highball', gl = BAR_GLASSES[id], y0 = gl.p.slice(gl.b)[0][1];
+    const surf = y0 + (liquidLevel(id) - y0)*(MIX3D.fill || 0), from = .34;
+    MIX3D.stream.visible = pouring && tg > (MIX3D.fill || 0); MIX3D.stream.material.color.setHex(MIX3D.pourCol || 0xFFFFFF);
+    MIX3D.stream.scale.y = from - surf; MIX3D.stream.position.set(.004, (from + surf)/2, 0); }
+  // bolhas sobem e recomeçam no fundo
+  if (MIX3D.model && !RM.matches) MIX3D.model.traverse(o => { const b = o.userData.bub; if (b){ o.position.y += b.sp/60; if (o.position.y > b.y1) o.position.y = b.y0 + .004; } });
   r.render(MIX3D.s, MIX3D.cam);
   MIX3D.raf = requestAnimationFrame(mixFrame);
 }
@@ -7269,13 +7618,126 @@ function loop(){
    o autosave fica desligado até o jogador escolher apagar, e um aviso explica a situação */
 const rawSave = GAME.save.raw();
 const hadSave = GAME.save.load();
-const saveBlocked = !hadSave && rawSave !== null;
+let saveBlocked = !hadSave && rawSave !== null;
 if (!hadSave) dirtyRoom(ROOMS[0]);
 if (hadSave){ $('play').textContent = 'Continuar'; $('lockNote').textContent = 'Progresso salvo carregado. Você volta exatamente de onde parou.'; $('resetSave').hidden = false; }
 if (saveBlocked){ $('lockNote').textContent = 'Existe um progresso salvo que não pôde ser lido. Ele foi preservado e não será sobrescrito. Use "Apagar progresso" para começar do zero.'; $('resetSave').hidden = false; }
 $('resetSave').onclick = () => { if (confirm('Apagar o progresso salvo e começar do zero?')) { GAME.save.clear(); location.reload(); } };
 setInterval(() => { if (!saveBlocked) GAME.save.save(); }, 10000);
 addEventListener('beforeunload', () => { if (!saveBlocked) GAME.save.save(); });
+
+/* ============================================================
+   CONTAS E RANKING · Firebase (Authentication com e-mail e senha + Firestore). Cada conta guarda o progresso em
+   saves/{uid} (só o dono lê e escreve) e publica dinheiro e hóspedes em ranking/{uid} (todos leem). Ao entrar, o
+   progresso da nuvem substitui o local e o jogo recomeça de onde parou; o autosave sobe para a nuvem a cada 20 s.
+   Sem FIREBASE_CONFIG (ou sem rede para baixar o SDK) o jogo segue offline, como antes.
+   Para ativar: crie um projeto no console do Firebase, ligue Authentication › E-mail/senha e o Firestore, cole a
+   configuração do app da Web abaixo e publique as regras do arquivo docs/firestore.rules.
+   ============================================================ */
+const FIREBASE_CONFIG = null;   // ex.: {apiKey:'...', authDomain:'...', projectId:'...', appId:'...'}
+const ACCOUNT = {on:false, user:null, verified:false, lastPush:0, db:null, auth:null, rankBy:'money'};
+const OWNER_KEY = 'grand_resort_owner';
+const lsGet = k => { try { return localStorage.getItem(k); } catch(e){ return null; } };
+const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e){ /* sem armazenamento */ } };
+const AUTH_ERR = {'auth/invalid-email':'E-mail inválido.', 'auth/user-not-found':'E-mail ou senha incorretos.', 'auth/wrong-password':'E-mail ou senha incorretos.',
+  'auth/invalid-credential':'E-mail ou senha incorretos.', 'auth/invalid-login-credentials':'E-mail ou senha incorretos.', 'auth/email-already-in-use':'Este e-mail já tem uma conta. Use "Entrar".',
+  'auth/weak-password':'A senha precisa ter pelo menos 6 caracteres.', 'auth/too-many-requests':'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
+  'auth/network-request-failed':'Sem conexão com a internet. Verifique a rede e tente de novo.', 'auth/missing-email':'Informe o e-mail.'};
+const authMsg = (t, kind = 'bad') => { const m = $('authMsg'); m.textContent = t; m.className = 'msg ' + kind; };
+const escapeHTML = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
+function authView(v){
+  $('fLogin').hidden = v !== 'login'; $('fSignup').hidden = v !== 'signup'; $('fForgot').hidden = v !== 'forgot';
+  $('tabLogin').setAttribute('aria-selected', v !== 'signup'); $('tabSignup').setAttribute('aria-selected', v === 'signup'); authMsg('', '');
+}
+function authBusy(form, on){ form.querySelectorAll('button, input').forEach(b => { b.disabled = on; }); }
+// sobe o progresso e a linha do ranking (no máximo a cada 20 s, ou já, com force)
+function cloudPush(force){
+  if (!ACCOUNT.verified || saveBlocked) return;
+  const now = Date.now(); if (!force && now - ACCOUNT.lastPush < 20000) return; ACCOUNT.lastPush = now;
+  const u = ACCOUNT.user, ts = firebase.firestore.FieldValue.serverTimestamp();
+  ACCOUNT.db.collection('saves').doc(u.uid).set({save:JSON.stringify(GAME.save.snapshot()), updated:ts}).catch(e => console.warn('[nuvem]', e));
+  ACCOUNT.db.collection('ranking').doc(u.uid).set({name:(u.displayName || 'Gerente').slice(0, 20), money:Math.round(G.money), guests:guestSeq, rep:Math.round(G.rep*10)/10, day:G.day, updated:ts}).catch(e => console.warn('[ranking]', e));
+}
+function showAccountBar(){
+  const a = $('acct'); a.hidden = false;
+  a.innerHTML = ACCOUNT.on && ACCOUNT.user ? `<span>Gerente: <b>${escapeHTML(ACCOUNT.user.displayName || ACCOUNT.user.email)}</b></span><button type="button" id="openRank">Ver ranking</button><button type="button" id="logout">Sair da conta</button>`
+    : '<span>Modo offline: o progresso fica salvo só neste navegador.</span>';
+  if (ACCOUNT.on && ACCOUNT.user){
+    $('openRank').onclick = openRanking;
+    $('logout').onclick = async () => { cloudPush(true); await new Promise(r => setTimeout(r, 600)); await ACCOUNT.auth.signOut(); GAME.save.clear(); lsSet(OWNER_KEY, null); saveBlocked = true; location.reload(); };
+  }
+}
+async function openRanking(){
+  $('rank').hidden = false; await drawRanking();
+}
+async function drawRanking(){
+  const by = ACCOUNT.rankBy, list = $('rkList');
+  $('rkMoney').setAttribute('aria-selected', by === 'money'); $('rkGuests').setAttribute('aria-selected', by === 'guests');
+  list.innerHTML = '<li><i>…</i><span>Carregando</span><b></b></li>';
+  try {
+    const snap = await ACCOUNT.db.collection('ranking').orderBy(by, 'desc').limit(10).get();
+    if (snap.empty){ list.innerHTML = '<li><i>—</i><span>Ninguém no ranking ainda</span><b></b></li>'; return; }
+    let i = 0; list.innerHTML = '';
+    snap.forEach(d => { const r = d.data(), li = document.createElement('li'); i++;
+      if (ACCOUNT.user && d.id === ACCOUNT.user.uid) li.className = 'me';
+      li.innerHTML = `<i>${i}º</i><span>${escapeHTML(r.name || 'Gerente')}</span><b>${by === 'money' ? fmt(r.money || 0) : (r.guests || 0) + ' hóspedes'}</b>`; list.appendChild(li); });
+  } catch(e){ list.innerHTML = '<li><i>!</i><span>Não foi possível carregar o ranking agora.</span><b></b></li>'; console.warn('[ranking]', e); }
+}
+$('rkMoney').onclick = () => { ACCOUNT.rankBy = 'money'; drawRanking(); };
+$('rkGuests').onclick = () => { ACCOUNT.rankBy = 'guests'; drawRanking(); };
+$('rkClose').onclick = () => { $('rank').hidden = true; };
+// as teclas digitadas nos formulários não podem andar, pular ou interagir no jogo
+for (const id of ['auth', 'rank']) $(id).addEventListener('keydown', e => e.stopPropagation());
+document.querySelectorAll('[data-eye]').forEach(b => b.onclick = () => { const i = $(b.dataset.eye), show = i.type === 'password'; i.type = show ? 'text' : 'password'; b.textContent = show ? 'Ocultar' : 'Mostrar'; });
+$('tabLogin').onclick = () => authView('login'); $('tabSignup').onclick = () => authView('signup');
+$('goForgot').onclick = () => { $('fEmail').value = $('lEmail').value; authView('forgot'); };
+$('backLogin').onclick = () => authView('login');
+(function initAccounts(){
+  if (!FIREBASE_CONFIG || !window.firebase || !firebase.auth){ showAccountBar(); return; }
+  try { firebase.initializeApp(FIREBASE_CONFIG); } catch(e){ console.warn('[firebase]', e); showAccountBar(); return; }
+  ACCOUNT.on = true; ACCOUNT.auth = firebase.auth(); ACCOUNT.db = firebase.firestore();
+  ACCOUNT.auth.languageCode = 'pt';
+  $('start').hidden = true; $('auth').hidden = false;
+  $('fLogin').onsubmit = async e => { e.preventDefault(); const f = e.target, em = $('lEmail').value.trim(), pw = $('lPass').value;
+    if (!em || !pw) return authMsg('Preencha e-mail e senha.');
+    authBusy(f, true); authMsg('Entrando…', 'good');
+    try { await ACCOUNT.auth.signInWithEmailAndPassword(em, pw); } catch(err){ authMsg(AUTH_ERR[err.code] || 'Não foi possível entrar. Tente de novo.'); authBusy(f, false); } };
+  $('fSignup').onsubmit = async e => { e.preventDefault(); const f = e.target, nm = $('sName').value.trim(), em = $('sEmail').value.trim(), pw = $('sPass').value;
+    if (nm.length < 2) return authMsg('Escolha um nome com pelo menos 2 letras.');
+    if (pw.length < 6) return authMsg('A senha precisa ter pelo menos 6 caracteres.');
+    if (pw !== $('sPass2').value) return authMsg('As senhas não são iguais.');
+    authBusy(f, true); authMsg('Criando a sua conta…', 'good'); ACCOUNT.signup = nm;
+    try { const c = await ACCOUNT.auth.createUserWithEmailAndPassword(em, pw); await c.user.updateProfile({displayName:nm}); ACCOUNT.signup = null; ACCOUNT.afterSignup && ACCOUNT.afterSignup(c.user); }
+    catch(err){ ACCOUNT.signup = null; authMsg(AUTH_ERR[err.code] || 'Não foi possível criar a conta. Tente de novo.'); authBusy(f, false); } };
+  $('fForgot').onsubmit = async e => { e.preventDefault(); const f = e.target, em = $('fEmail').value.trim();
+    if (!em) return authMsg('Informe o e-mail da conta.');
+    authBusy(f, true);
+    try { await ACCOUNT.auth.sendPasswordResetEmail(em); authMsg('Pronto! Se este e-mail tiver conta, o link de nova senha chega em instantes. Confira também o spam.', 'good'); }
+    catch(err){ authMsg(AUTH_ERR[err.code] || 'Não foi possível enviar o e-mail agora.'); }
+    authBusy(f, false); };
+  // depois de entrar: se o progresso local não é desta conta, baixa o da nuvem e recomeça o jogo com ele
+  async function enter(u){
+    ACCOUNT.user = u;
+    const owner = lsGet(OWNER_KEY);
+    if (owner !== u.uid){
+      authMsg('Carregando o seu progresso…', 'good');
+      let cloud = null;
+      try { const d = await ACCOUNT.db.collection('saves').doc(u.uid).get(); cloud = d.exists ? d.data().save : null; } catch(e){ console.warn('[nuvem]', e); }
+      // progresso deste navegador sem dono (de antes das contas) passa a ser da primeira conta criada nele
+      if (!cloud && !owner && GAME.save.raw()){ lsSet(OWNER_KEY, u.uid); ACCOUNT.verified = true; cloudPush(true); }
+      else { saveBlocked = true; cloud ? lsSet(GAME.save.key, cloud) : GAME.save.clear(); lsSet(OWNER_KEY, u.uid); location.reload(); return; }
+    }
+    ACCOUNT.verified = true; $('auth').hidden = true; $('start').hidden = false; showAccountBar(); cloudPush(true);
+  }
+  ACCOUNT.afterSignup = u => enter(u);
+  ACCOUNT.auth.onAuthStateChanged(u => {
+    if (!u){ $('auth').hidden = false; $('start').hidden = true; return; }
+    if (ACCOUNT.signup) return;   // cadastro em andamento: entra depois de gravar o nome
+    enter(u);
+  });
+  setInterval(() => cloudPush(false), 20000);
+  addEventListener('beforeunload', () => cloudPush(true));
+})();
 camera.lookAt(0, 1.65, 0);
 // seletor de qualidade na tela inicial: troca e recarrega (o progresso é salvo antes, no beforeunload)
 for (const [lv, def] of Object.entries(GFX.LEVELS)){
