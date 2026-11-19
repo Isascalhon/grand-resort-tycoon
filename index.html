@@ -98,6 +98,61 @@ button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
 .rank{width:min(520px,100%);display:flex;flex-direction:column;gap:12px}.rank ol{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
 .rank li{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;background:rgba(255,255,255,.05)}
 .rank li.me{background:rgba(216,166,74,.22);outline:1px solid var(--brass)}.rank li i{font-style:normal;font-weight:700;color:var(--brass);text-align:center}.rank li b{font-variant-numeric:tabular-nums}
+.modal .hms{width:min(1080px,100%);height:min(680px,calc(100vh - 32px));display:grid;grid-template-columns:220px 1fr;overflow:hidden;padding:0;background:color-mix(in srgb,#1E140F 94%,transparent)}
+.hms-nav{display:flex;flex-direction:column;gap:14px;padding:18px 12px;background:rgba(0,0,0,.28);border-right:1px solid rgba(216,166,74,.18)}
+.hms-brand{display:flex;align-items:center;gap:10px;padding:0 6px 6px}.hms-brand b{display:block;font-family:var(--font-display);font-weight:400;font-size:18px}.hms-brand small{color:var(--linen-dim);font-size:11.5px}
+.hms-logo{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:linear-gradient(135deg,var(--brass),#B9822F);color:var(--walnut);font-weight:800;font-size:14px;letter-spacing:.04em}
+.hms-nav nav{display:flex;flex-direction:column;gap:3px}
+.hms-nav nav button{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;color:var(--linen-dim);font-size:14px;text-align:left}
+.hms-nav nav button svg{width:18px;height:18px;flex:none;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.hms-nav nav button:hover{background:rgba(255,255,255,.05);color:var(--linen)}
+.hms-nav nav button[aria-selected=true]{background:rgba(216,166,74,.16);color:var(--linen);box-shadow:inset 3px 0 0 var(--brass)}
+.hms-nav nav button .cnt{margin-left:auto;font-size:11px;background:var(--coral);color:#fff;border-radius:99px;padding:1px 7px;font-weight:700}
+.hms-foot{margin-top:auto;font-size:11.5px;color:var(--linen-dim);padding:0 6px;line-height:1.5}
+.hms-main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.hms-top{display:flex;align-items:center;gap:14px;padding:16px 20px;border-bottom:1px solid rgba(216,166,74,.14);flex-wrap:wrap}
+.hms-top small{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);font-weight:600}.hms-top h2{margin:0;font-family:var(--font-display);font-weight:400;font-size:26px}
+.hms-top > div:first-child{flex:1;min-width:160px}
+.hms-chips{display:flex;gap:8px;flex-wrap:wrap}.hms-chips span{font-size:12.5px;padding:6px 10px;border-radius:99px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.08);font-variant-numeric:tabular-nums;white-space:nowrap}
+.hms-chips span b{color:var(--linen)}.hms-chips .money b{color:#8FE3B0}
+.hms-main section{padding:18px 20px 22px;overflow:auto;flex:1}
+.hms .grid{display:grid;gap:14px}.hms .g2{grid-template-columns:repeat(2,minmax(0,1fr))}.hms .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.hms .card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:14px 16px;min-width:0}
+.hms .card h4{margin:0 0 10px;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--brass);font-weight:600;display:flex;justify-content:space-between;gap:8px}
+.hms .card h4 em{font-style:normal;color:var(--linen-dim);letter-spacing:0;text-transform:none;font-weight:500}
+.hms .stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:14px}
+.hms .stat .card span{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--linen-dim)}
+.hms .stat .card b{display:block;font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:4px}
+.hms .stat .card i{font-style:normal;font-size:12px;color:var(--linen-dim)}
+.hms .pos{color:#8FE3B0}.hms .neg{color:#F29A8E}
+.hms .bar{height:8px;border-radius:99px;background:rgba(255,255,255,.08);overflow:hidden;margin-top:8px}.hms .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--lagoon),#8FE3B0);border-radius:inherit}
+.hms .rooms{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.hms .rm{border-radius:10px;padding:9px 10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-left:4px solid #6E767E;font-size:12px;line-height:1.35}
+.hms .rm b{display:block;font-size:14px}.hms .rm.free{border-left-color:#3FD17B}.hms .rm.busy{border-left-color:#3D7CC9}.hms .rm.dirty{border-left-color:#F2B630}.hms .rm.work{border-left-color:#6E767E;opacity:.7}.hms .rm.crisis{border-left-color:var(--coral)}
+.hms .legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--linen-dim);margin-top:10px}.hms .legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.hms .list{display:flex;flex-direction:column;gap:6px;margin:0;padding:0;list-style:none}
+.hms .list li{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:10px;background:rgba(255,255,255,.035);font-size:13px}
+.hms .list li .dot{width:8px;height:8px;border-radius:50%;background:#3FD17B;flex:none}.hms .list li .dot.warn{background:#F2B630}.hms .list li .dot.bad{background:var(--coral)}
+.hms .list li span:last-child{margin-left:auto;color:var(--linen-dim);font-size:12px;text-align:right}
+.hms .chart{display:flex;align-items:flex-end;gap:10px;height:150px;padding-top:6px}
+.hms .chart > div{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;height:100%;justify-content:flex-end;font-size:11px;color:var(--linen-dim)}
+.hms .chart .pair{display:flex;gap:3px;align-items:flex-end;height:100%;width:100%;justify-content:center}
+.hms .chart .pair i{width:40%;max-width:16px;border-radius:5px 5px 0 0;background:#8FE3B0;min-height:2px}.hms .chart .pair i.e{background:#F29A8E}
+.hms .emp{display:grid;grid-template-columns:44px 1fr auto;gap:12px;align-items:center}
+.hms .avatar{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-weight:700;color:var(--walnut);background:linear-gradient(135deg,#7FD8C8,var(--lagoon))}
+.hms .emp h3{margin:0;font-size:15.5px}.hms .emp p{margin:2px 0 0;font-size:12.5px;color:var(--linen-dim)}
+.hms .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:99px;background:rgba(43,179,177,.18);color:#7FD8C8;margin-left:6px;font-weight:600;vertical-align:1px}
+.hms .seg{display:inline-flex;background:rgba(0,0,0,.3);padding:3px;border-radius:10px;gap:2px}
+.hms .seg button{padding:6px 10px;border-radius:8px;font-size:12.5px;color:var(--linen-dim)}.hms .seg button[aria-pressed=true]{background:var(--brass);color:var(--walnut);font-weight:700}
+.hms .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.06);font-size:12.5px;color:var(--linen-dim)}
+.hms .btn{background:var(--brass);color:var(--walnut);font-weight:700;padding:8px 13px;border-radius:10px;font-size:13px}
+.hms .btn.ghost{background:transparent;border:1px solid rgba(242,154,142,.6);color:#F29A8E;font-weight:600}
+.hms .btn.soft{background:rgba(255,255,255,.08);color:var(--linen);font-weight:600}
+.hms .btn:disabled{background:#4a3c31;color:#988870;border-color:transparent;cursor:not-allowed}
+.hms table td,.hms table th{padding:8px 6px;border-bottom:1px solid rgba(255,255,255,.06)}
+.hms .staff,.hms .role{background:none}.hms .role{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);border-radius:14px}
+@media (max-width:820px){.modal .hms{grid-template-columns:1fr;height:calc(100vh - 24px)}.hms-nav{flex-direction:row;align-items:center;overflow-x:auto;padding:10px;border-right:0;border-bottom:1px solid rgba(216,166,74,.18)}
+  .hms-nav nav{flex-direction:row}.hms-nav nav button span.lbl{display:none}.hms-brand div,.hms-foot{display:none}.hms .g2,.hms .g3{grid-template-columns:1fr}}
 .cta{background:var(--brass);color:var(--walnut);font-weight:700;font-size:16px;padding:13px 18px;border-radius:12px}
 .cta:hover{filter:brightness(1.08)}
 .gfxpick{display:flex;align-items:center;gap:12px;font-size:14px;color:var(--linen-dim)}
@@ -315,13 +370,20 @@ body.sr-on .hud,body.sr-on .help,body.sr-on #ch,body.sr-on #prompt{display:none}
 </div>
 
 <div class="overlay modal" id="pc" hidden>
-  <div class="panel sheet" role="dialog" aria-label="Computador da recepção">
-    <header>
-      <h2>Gestão do Hotel</h2>
-      <div class="tabs" id="pcTabs" role="tablist"></div>
-      <button class="close" id="pcClose">Fechar · Esc</button>
-    </header>
-    <section id="pcBody"></section>
+  <div class="panel hms" role="dialog" aria-label="Gestão do Hotel">
+    <aside class="hms-nav">
+      <div class="hms-brand"><span class="hms-logo">GR</span><div><b>Grand Resort</b><small id="pcBranch">Sistema de gestão</small></div></div>
+      <nav id="pcTabs" role="tablist" aria-orientation="vertical"></nav>
+      <div class="hms-foot" id="pcFoot"></div>
+    </aside>
+    <div class="hms-main">
+      <header class="hms-top">
+        <div><small id="pcCrumb">Painel</small><h2 id="pcTitle">Visão geral</h2></div>
+        <div class="hms-chips" id="pcChips"></div>
+        <button class="close" id="pcClose">Fechar · Esc</button>
+      </header>
+      <section id="pcBody"></section>
+    </div>
   </div>
 </div>
 
@@ -3299,6 +3361,14 @@ function hire(role){
   spawnStaff(role, G.staff[role] - 1); SFX.buy(); toast(`${r.name} contratado(a) · salário ${fmt(r.wage)}/dia`, 'good');
   renderPC();
 }
+function fire(role){
+  const list = STAFF.filter(n => n.role === role); if (!list.length) return;
+  const n = list[list.length - 1], r = ROLES[role];
+  if (n.room){ n.room.maid = null; n.room = null; }
+  if (n.cart && n.cart.parent !== n.g) scene.remove(n.cart);
+  STAFF.splice(STAFF.indexOf(n), 1); removeNPC(n); G.staff[role]--;
+  SFX.error(); toast(`${r.name} desligado(a) da equipe · salário de ${fmt(wageOf(role))}/dia a menos`); renderPC();
+}
 function spawnStaff(role, i){
   if (role === 'maid') maidModels = i;
   const n = makeNPC(role); n.role = role; STAFF.push(n);
@@ -3311,7 +3381,7 @@ function spawnStaff(role, i){
 function staffTick(n, dt){
   if (n.role === 'recep'){
     n.work += dt;
-    if (n.work > [8,5,3][G.staffLv.recep - 1]){ n.work = 0; autoCheckIn(); }
+    if (n.work > [8,5,3][G.staffLv.recep - 1]/payOf('recep').speed){ n.work = 0; autoCheckIn(); }
   }
   if (n.role === 'chef' && !RM.matches){
     const busy = STOVE.queue.length > 0;
@@ -3328,7 +3398,7 @@ function staffTick(n, dt){
       if (n.work > 2.5){
         n.work = 0; const p = n.room.dirt[0]; if (p) cleanPiece(n.room, p, true);
         if (!n.room.dirt.length){
-          const done = n.room; n.room.maid = null; n.state = 'back'; n.cool = [20,14,10][G.staffLv.maid - 1];
+          const done = n.room; n.room.maid = null; n.state = 'back'; n.cool = [20,14,10][G.staffLv.maid - 1]/payOf('maid').speed;
           if (G.staffLv.maid >= 2) addRep(1);
           n.tag.userData.set(staffName('maid'), 'rgba(43,179,177,.95)', '#10302F'); route(n, cartNode(done), [], () => { grabCart(n); maidHome(n, () => { n.state = 'idle'; }); });
         }
@@ -3345,7 +3415,16 @@ function spawnBartender(){ const b = makeNPC('bartender'); b.g.position.set(BART
    ============================================================ */
 const pad2 = v => String(v).padStart(2, '0');
 function clockStr(){ const m = 8*60 + Math.floor(G.t/G.dayLen*14*60); return `${pad2(Math.floor(m/60))}:${pad2(m % 60)}`; }
-const wagesPerDay = () => Object.keys(ROLES).reduce((s,k) => s + ROLES[k].wage*G.staff[k], 0);
+/* Faixa salarial por função: custa mais (ou menos) e muda o ritmo de trabalho; no fim do dia a equipe premium
+   motiva o hotel (+1 de reputação) e a equipe no piso salarial reclama (−1) */
+const PAY = {piso:{n:'Piso', k:.8, speed:.85, rep:-1, txt:'−20% de salário · trabalha 15% mais devagar · −1 de reputação por dia'},
+  padrao:{n:'Padrão', k:1, speed:1, rep:0, txt:'salário de mercado · ritmo normal'},
+  premium:{n:'Premium', k:1.3, speed:1.2, rep:1, txt:'+30% de salário · trabalha 20% mais rápido · +1 de reputação por dia'}};
+G.pay = {recep:'padrao', maid:'padrao', chef:'padrao', waiter:'padrao'};
+const payOf = role => PAY[(G.pay && G.pay[role]) || 'padrao'] || PAY.padrao;
+const wageOf = role => Math.round(ROLES[role].wage*payOf(role).k);
+const wagesPerDay = () => Object.keys(ROLES).reduce((s,k) => s + wageOf(k)*G.staff[k], 0);
+G.hist = [];
 /* Salários: paga o que o caixa cobre; o restante vira dívida que se soma ao próximo dia e reduz a reputação.
    O caixa nunca fica negativo por salário. */
 function endDay(){
@@ -3355,6 +3434,8 @@ function endDay(){
   G.debt = Math.round(due - paid);
   if (G.debt > 0){ addRep(-2); toast(`Caixa insuficiente: ${fmt(G.debt)} de salários ficam pendentes e reduzem a reputação`, 'bad'); }
   toast(`Fim do dia ${G.day} · receita ${fmt(G.incomeToday)} · despesas ${fmt(G.expenseToday)}`);
+  if (!G.debt) for (const k of Object.keys(ROLES)) if (G.staff[k] && payOf(k).rep) addRep(payOf(k).rep);
+  (G.hist = G.hist || []).push({day:G.day, inc:Math.round(G.incomeToday), exp:Math.round(G.expenseToday)}); if (G.hist.length > 14) G.hist.shift();
   G.day++; G.t = 0; G.incomeToday = 0; G.expenseToday = 0;
   GAME.save.save();
 }
@@ -4278,8 +4359,14 @@ function renderMission(){
 /* ============================================================
    COMPUTADOR DA RECEPÇÃO · finanças, equipe, melhorias, filiais e parceiros
    ============================================================ */
-let pcOpen = false, pcTab = 'fin';
-const PC_TABS = [['fin','Finanças'], ['staff','Equipe'], ['upg','Melhorias'], ['branch','Filiais'], ['partner','Parceiros']];
+let pcOpen = false, pcTab = 'dash';
+const ICON = {
+  dash:'<path d="M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z"/>', rooms:'<path d="M3 20V8l9-5 9 5v12"/><path d="M9 20v-6h6v6"/>',
+  staff:'<circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.6 3-5.5 6-5.5s5.4 1.9 6 5.5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.6c2.6.2 4.7 1.9 5.2 4.9"/>',
+  fin:'<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>', upg:'<path d="M12 3l2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1L3.2 9.5l6.1-.9z"/>',
+  branch:'<circle cx="12" cy="10" r="3"/><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/>', partner:'<path d="M8 12l3 3 5-6"/><rect x="3" y="4" width="18" height="16" rx="3"/>',
+};
+const PC_TABS = [['dash','Visão geral'], ['rooms','Quartos'], ['staff','Equipe e salários'], ['fin','Finanças'], ['upg','Melhorias'], ['branch','Filiais'], ['partner','Parceiros']];
 function openPC(){
   pcOpen = true; $('pc').hidden = false; renderPC();
   if (controls.isLocked) controls.unlock();
@@ -4292,41 +4379,130 @@ function closePC(fromKey){
 }
 function pauseOverlay(){ $('start').hidden = false; $('play').textContent = 'Clique para continuar'; G.paused = true; }
 function renderPC(){
-  $('pcTabs').innerHTML = PC_TABS.map(([k,l]) => `<button data-tab="${k}" role="tab" aria-selected="${pcTab === k}">${l}</button>`).join('');
+  const crises = CRISES.list.length, dirty = allRooms().filter(r => r.owned && r.state === 'dirty').length;
+  $('pcTabs').innerHTML = PC_TABS.map(([k, l]) => {
+    const n = k === 'dash' ? crises : k === 'rooms' ? dirty : 0;
+    return `<button data-tab="${k}" role="tab" aria-selected="${pcTab === k}"><svg viewBox="0 0 24 24">${ICON[k]}</svg><span class="lbl">${l}</span>${n ? `<span class="cnt">${n}</span>` : ''}</button>`; }).join('');
   $('pcTabs').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { pcTab = b.dataset.tab; renderPC(); });
-  const view = {fin:finView, staff:staffView, upg:upgView, branch:branchView, partner:partnerView}[pcTab];
+  const br = BRANCHES.find(b => b.id === G.branch);
+  $('pcBranch').textContent = br ? br.name : 'Sistema de gestão';
+  $('pcTitle').textContent = (PC_TABS.find(t => t[0] === pcTab) || PC_TABS[0])[1];
+  $('pcCrumb').textContent = `Dia ${G.day} · ${clockStr()}`;
+  $('pcChips').innerHTML = `<span class="money">Caixa <b>${fmt(G.money)}</b></span><span>Ocupação <b>${occupancy()}%</b></span><span>Reputação <b>${starsNow().toFixed(1).replace('.', ',')} ★</b></span>`;
+  $('pcFoot').innerHTML = `Folha diária <b>${fmt(wagesPerDay())}</b><br>${G.debt ? `<span style="color:#F29A8E">Salários pendentes ${fmt(G.debt)}</span>` : 'Salários em dia'}`;
+  const view = {dash:dashView, rooms:roomsView, staff:staffView, fin:finView, upg:upgView, branch:branchView, partner:partnerView}[pcTab] || dashView;
   $('pcBody').innerHTML = view();
-  $('pcBody').querySelectorAll('[data-hire]').forEach(b => b.onclick = () => hire(b.dataset.hire));
-  $('pcBody').querySelectorAll('[data-evolve]').forEach(b => b.onclick = () => evolve(b.dataset.evolve));
-  $('pcBody').querySelectorAll('[data-room]').forEach(b => b.onclick = () => { upgradeRoom(allRooms().find(r => r.id === b.dataset.room)); renderPC(); });
-  $('pcBody').querySelectorAll('[data-upg]').forEach(b => b.onclick = () => buyUpgrade(b.dataset.upg));
-  $('pcBody').querySelectorAll('[data-floor3]').forEach(b => b.onclick = () => { buyFloor3(); renderPC(); });
-  $('pcBody').querySelectorAll('[data-branch]').forEach(b => b.onclick = () => buyBranch(b.dataset.branch));
-  $('pcBody').querySelectorAll('[data-partner]').forEach(b => b.onclick = () => buyPartner(b.dataset.partner));
+  const B_ = $('pcBody');
+  B_.querySelectorAll('[data-hire]').forEach(b => b.onclick = () => hire(b.dataset.hire));
+  B_.querySelectorAll('[data-fire]').forEach(b => b.onclick = () => fire(b.dataset.fire));
+  B_.querySelectorAll('[data-pay]').forEach(b => b.onclick = () => { const [role, lv] = b.dataset.pay.split(':'); G.pay[role] = lv; SFX.click ? SFX.click() : null; toast(`${ROLES[role].name}: faixa ${PAY[lv].n} · ${fmt(wageOf(role))}/dia por pessoa`, 'good'); renderPC(); });
+  B_.querySelectorAll('[data-evolve]').forEach(b => b.onclick = () => evolve(b.dataset.evolve));
+  B_.querySelectorAll('[data-room]').forEach(b => b.onclick = () => { upgradeRoom(allRooms().find(r => r.id === b.dataset.room)); renderPC(); });
+  B_.querySelectorAll('[data-upg]').forEach(b => b.onclick = () => buyUpgrade(b.dataset.upg));
+  B_.querySelectorAll('[data-floor3]').forEach(b => b.onclick = () => { buyFloor3(); renderPC(); });
+  B_.querySelectorAll('[data-branch]').forEach(b => b.onclick = () => buyBranch(b.dataset.branch));
+  B_.querySelectorAll('[data-partner]').forEach(b => b.onclick = () => buyPartner(b.dataset.partner));
+  B_.querySelectorAll('[data-go]').forEach(b => b.onclick = () => { pcTab = b.dataset.go; renderPC(); });
+}
+// o painel aberto se atualiza sozinho (status dos quartos, da equipe e do caixa)
+setInterval(() => { if (pcOpen && (pcTab === 'dash' || pcTab === 'rooms') && !document.activeElement.closest('#pcBody button')) renderPC(); }, 2000);
+const roomFloor = r => r.floorLv === 2 ? '3º andar' : r.upper ? '2º andar' : 'Térreo';
+function roomStatus(r){
+  const cr = CRISES.list.find(c => (c.id === 'leak' || c.id === 'pipe') && c.name.endsWith(' ' + r.id));
+  if (!r.owned || r.level === 0) return {cls:'work', txt:'Em obras'};
+  if (cr) return {cls:'crisis', txt:'Manutenção'};
+  if (r.guest) return {cls:'busy', txt:'Ocupado' + (r.guest.profile ? ' · ' + r.guest.profile.name.split(' ')[0] : '')};
+  if (r.state === 'dirty') return {cls:'dirty', txt:r.maid ? 'Em limpeza' : 'Aguardando limpeza'};
+  return {cls:'free', txt:'Livre'};
+}
+function staffActivity(n){
+  if (n.role === 'recep') return G.queue.length ? `Atendendo a fila · ${G.queue.length} na espera` : 'No balcão da recepção';
+  if (n.role === 'maid') return n.state === 'cleaning' && n.room ? `Limpando o quarto ${n.room.id}` : n.state === 'going' && n.room ? `Indo ao quarto ${n.room.id}` : n.state === 'back' ? 'Voltando à salinha' : 'Na salinha da equipe';
+  if (n.role === 'chef') return STOVE.queue.length ? `Cozinhando · ${STOVE.queue.length} pedido(s)` : 'Cozinha em ordem';
+  if (n.role === 'waiter') return n.state === 'idle' ? 'No salão, aguardando mesas' : 'Atendendo mesas';
+  return 'Trabalhando';
+}
+function dashView(){
+  const rooms = allRooms(), owned = rooms.filter(r => r.owned), occ = owned.filter(r => r.guest).length, dirty = owned.filter(r => r.state === 'dirty').length;
+  const inHotel = G.guests ? G.guests.length : 0, hist = (G.hist || []).slice(-6).concat([{day:G.day, inc:Math.round(G.incomeToday), exp:Math.round(G.expenseToday), now:true}]);
+  const max = Math.max(1, ...hist.map(h => Math.max(h.inc, h.exp)));
+  const chart = hist.map(h => `<div><div class="pair"><i style="height:${Math.round(h.inc/max*100)}%" title="Receita ${fmt(h.inc)}"></i><i class="e" style="height:${Math.round(h.exp/max*100)}%" title="Despesas ${fmt(h.exp)}"></i></div>${h.now ? 'Hoje' : 'D' + h.day}</div>`).join('');
+  const team = STAFF.filter(n => ROLES[n.role]).map(n => `<li><span class="dot ${n.role === 'maid' && n.state === 'cleaning' ? 'warn' : ''}"></span><b>${ROLES[n.role].name}</b><span>${staffActivity(n)}</span></li>`).join('')
+    || `<li><span class="dot bad"></span>Nenhum funcionário contratado<span><button class="btn soft" data-go="staff">Contratar</button></span></li>`;
+  const alerts = CRISES.list.map(c => `<li><span class="dot bad"></span>${c.name}<span>${CRISES.repair && CRISES.repair.c === c ? 'em conserto' : 'reputação caindo'}</span></li>`)
+    .concat(dirty && !G.staff.maid ? [`<li><span class="dot warn"></span>${dirty} quarto(s) sujo(s) e nenhuma faxineira<span><button class="btn soft" data-go="staff">Ver equipe</button></span></li>`] : [])
+    .concat(G.debt ? [`<li><span class="dot bad"></span>Salários pendentes<span>${fmt(G.debt)}</span></li>`] : [])
+    .concat(G.queue.length > 3 ? [`<li><span class="dot warn"></span>Fila grande no balcão<span>${G.queue.length} hóspedes</span></li>`] : []).join('')
+    || '<li><span class="dot"></span>Tudo em ordem no hotel<span>sem ocorrências</span></li>';
+  const roomsMini = rooms.map(r => { const st = roomStatus(r); return `<div class="rm ${st.cls}"><b>${r.id}</b>${st.txt}</div>`; }).join('');
+  return `<div class="stat">
+      <div class="card"><span>Caixa</span><b>${fmt(G.money)}</b><i>${G.debt ? 'pendente ' + fmt(G.debt) : 'sem dívidas'}</i></div>
+      <div class="card"><span>Resultado de hoje</span><b class="${G.incomeToday - G.expenseToday >= 0 ? 'pos' : 'neg'}">${G.incomeToday - G.expenseToday < 0 ? '−' : ''}${fmt(Math.abs(G.incomeToday - G.expenseToday))}</b><i>receita ${fmt(G.incomeToday)}</i></div>
+      <div class="card"><span>Ocupação</span><b>${occupancy()}%</b><div class="bar"><i style="width:${occupancy()}%"></i></div></div>
+      <div class="card"><span>Hóspedes</span><b>${inHotel}</b><i>${G.queue.length} na fila · ${guestSeq} recebidos</i></div>
+    </div>
+    <div class="grid g2">
+      <div class="card"><h4>Receita × despesas <em>últimos dias</em></h4><div class="chart">${chart}</div>
+        <div class="legend"><span><i style="background:#8FE3B0"></i>Receita</span><span><i style="background:#F29A8E"></i>Despesas</span></div></div>
+      <div class="card"><h4>Ocorrências e alertas <em>${CRISES.list.length} ativa(s)</em></h4><ul class="list">${alerts}</ul></div>
+      <div class="card"><h4>Quartos <em>${occ}/${owned.length} ocupados · ${dirty} sujos</em></h4><div class="rooms">${roomsMini}</div></div>
+      <div class="card"><h4>Equipe agora <em>folha ${fmt(wagesPerDay())}/dia</em></h4><ul class="list">${team}</ul></div>
+    </div>`;
+}
+function roomsView(){
+  const rooms = allRooms(), cards = rooms.map(r => {
+    const st = roomStatus(r), gate = gateOf(r);
+    let btn;
+    if (!r.owned) btn = `<button class="btn" data-room="${r.id}" ${G.money < PRICE[1] || gate ? 'disabled' : ''}>Comprar · ${fmt(PRICE[1])}</button>`;
+    else if (r.level >= 3) btn = '<button class="btn" disabled>Nível máximo</button>';
+    else { const busy = r.guest || r.state !== 'free', c = PRICE[r.level + 1]; btn = `<button class="btn" data-room="${r.id}" ${busy || gate || G.money < c ? 'disabled' : ''}>${LEVEL[r.level + 1]} · ${fmt(c)}</button>`; }
+    return `<div class="card"><div class="rm ${st.cls}" style="margin-bottom:10px"><b>Quarto ${r.id}</b>${st.txt}</div>
+      <p style="margin:0 0 4px;font-size:13px">${r.owned ? LEVEL[r.level] : 'Não adquirido'} · ${roomFloor(r)}</p>
+      <p style="margin:0 0 10px;font-size:12.5px;color:var(--linen-dim)">Diária ${fmt(r.level >= 1 ? rateOf(r) : RATE[1])}${gate ? ' · ' + gate : ''}</p>${btn}</div>`;
+  }).join('');
+  return `<div class="legend" style="margin:0 0 12px"><span><i style="background:#3FD17B"></i>Livre</span><span><i style="background:#3D7CC9"></i>Ocupado</span><span><i style="background:#F2B630"></i>Limpeza</span><span><i style="background:#F29A8E"></i>Manutenção</span><span><i style="background:#6E767E"></i>Em obras</span></div>
+    <div class="grid g3">${cards}</div>`;
 }
 function finView(){
-  const rows = G.log.slice(0, 14).map(l => `<tr><td>Dia ${l.day} · ${l.time}</td><td>${l.why}</td><td class="num ${l.v >= 0 ? 'pos' : 'neg'}">${l.v >= 0 ? '+' : '−'}${fmt(Math.abs(l.v))}</td></tr>`).join('');
-  return `<div class="kpis">
-      <div class="kpi"><span>Caixa</span><b>${fmt(G.money)}</b></div>
-      <div class="kpi"><span>Receita hoje</span><b class="pos">${fmt(G.incomeToday)}</b></div>
-      <div class="kpi"><span>Despesas hoje</span><b class="neg">${fmt(G.expenseToday)}</b></div>
-      <div class="kpi"><span>Salários / dia</span><b>${fmt(wagesPerDay())}</b></div>
-      <div class="kpi"><span>Reputação</span><b>${starsNow().toFixed(1).replace('.', ',')}/10 ★</b></div>
-      <div class="kpi"><span>Refeições servidas</span><b>${G.served}</b></div></div>
-    <table><thead><tr><th>Quando</th><th>Lançamento</th><th class="num">Valor</th></tr></thead><tbody>${rows || '<tr><td colspan="3">Nenhum lançamento ainda. Abra a ficha de um hóspede no balcão.</td></tr>'}</tbody></table>`;
+  const rows = G.log.slice(0, 18).map(l => `<tr><td>Dia ${l.day} · ${l.time}</td><td>${l.why}</td><td class="num ${l.v >= 0 ? 'pos' : 'neg'}">${l.v >= 0 ? '+' : '−'}${fmt(Math.abs(l.v))}</td></tr>`).join('');
+  const payroll = Object.keys(ROLES).filter(k => G.staff[k]).map(k => `<tr><td>${ROLES[k].name} × ${G.staff[k]}</td><td>Faixa ${payOf(k).n}</td><td class="num neg">−${fmt(wageOf(k)*G.staff[k])}</td></tr>`).join('');
+  return `<div class="stat">
+      <div class="card"><span>Caixa</span><b>${fmt(G.money)}</b></div>
+      <div class="card"><span>Receita hoje</span><b class="pos">${fmt(G.incomeToday)}</b></div>
+      <div class="card"><span>Despesas hoje</span><b class="neg">${fmt(G.expenseToday)}</b></div>
+      <div class="card"><span>Refeições servidas</span><b>${G.served}</b></div></div>
+    <div class="grid g2">
+      <div class="card"><h4>Folha de pagamento <em>paga no fim do dia</em></h4><table><tbody>${payroll || '<tr><td colspan="3">Nenhum funcionário contratado.</td></tr>'}
+        <tr><td><b>Total por dia</b></td><td></td><td class="num"><b>${fmt(wagesPerDay())}</b></td></tr></tbody></table></div>
+      <div class="card"><h4>Lançamentos recentes</h4><table><tbody>${rows || '<tr><td colspan="3">Nenhum lançamento ainda. Abra a ficha de um hóspede no balcão.</td></tr>'}</tbody></table></div>
+    </div>`;
 }
 function staffView(){
-  return '<div class="staff">' + Object.entries(ROLES).map(([k,r]) => {
-    const full = G.staff[k] >= r.max, poor = G.money < r.cost;
+  const INI = {recep:'RE', maid:'FX', chef:'CZ', waiter:'GA'};
+  const cards = Object.entries(ROLES).map(([k, r]) => {
+    const full = G.staff[k] >= r.max, poor = G.money < r.cost, P = payOf(k), people = STAFF.filter(n => n.role === k);
     let lv = '', evo = '';
     if (r.levels){
       const L = G.staffLv[k];
-      lv = `<span class="lv">Nível ${L}: ${r.levels[L - 1].txt}</span>`;
-      evo = L < r.levels.length ? `<button data-evolve="${k}" ${G.money < r.levels[L].cost ? 'disabled' : ''}>Evoluir para Nv ${L + 1} · ${fmt(r.levels[L].cost)}</button>` : '<button disabled>Nível máximo</button>';
+      lv = `<span class="tag">Nível ${L}</span>`;
+      evo = L < r.levels.length ? `<button class="btn soft" data-evolve="${k}" ${G.money < r.levels[L].cost ? 'disabled' : ''}>Treinar para Nv ${L + 1} · ${fmt(r.levels[L].cost)}</button>` : '<button class="btn soft" disabled>Nível máximo</button>';
     }
-    return `<div class="role"><h3>${r.name}</h3><p>${r.desc}</p>${lv}<span class="meta">Salário ${fmt(r.wage)}/dia · contratados ${G.staff[k]}/${r.max}</span>
-      <div class="btns"><button data-hire="${k}" ${full || poor ? 'disabled' : ''}>${full ? 'Equipe completa' : (k === 'maid' ? (G.staff.maid ? 'Contratar 2º faxineiro' : 'Contratar 1ª faxineira') : 'Contratar') + ' · ' + fmt(r.cost)}</button>${evo}</div></div>`;
-  }).join('') + '</div>';
+    const hireTxt = full ? 'Equipe completa' : (k === 'maid' ? (G.staff.maid ? 'Contratar 2º faxineiro' : 'Contratar 1ª faxineira') : 'Contratar') + ' · ' + fmt(r.cost);
+    const seg = Object.entries(PAY).map(([id, pv]) => `<button data-pay="${k}:${id}" aria-pressed="${G.pay[k] === id}">${pv.n} · ${fmt(Math.round(r.wage*pv.k))}</button>`).join('');
+    const who = people.map(n => `<li><span class="dot"></span>${r.name}<span>${staffActivity(n)}</span></li>`).join('');
+    return `<div class="card">
+      <div class="emp"><div class="avatar">${INI[k] || '★'}</div><div><h3>${r.name}${lv}</h3><p>${r.desc}</p></div>
+        <div style="text-align:right;font-size:12.5px;color:var(--linen-dim)"><b style="display:block;font-size:18px;color:var(--linen)">${G.staff[k]}/${r.max}</b>contratados</div></div>
+      ${r.levels ? `<p style="margin:10px 0 0;font-size:12.5px;color:#7FD8C8">${r.levels[G.staffLv[k] - 1].txt}</p>` : ''}
+      ${who ? `<ul class="list" style="margin-top:10px">${who}</ul>` : ''}
+      <div class="row"><span>Salário</span><div class="seg" role="group" aria-label="Faixa salarial de ${r.name}">${seg}</div><span style="flex-basis:100%">${P.txt} · custo atual ${fmt(wageOf(k)*G.staff[k])}/dia</span></div>
+      <div class="row"><button class="btn" data-hire="${k}" ${full || poor ? 'disabled' : ''}>${hireTxt}</button>${evo}${G.staff[k] ? `<button class="btn ghost" data-fire="${k}">Demitir 1</button>` : ''}</div>
+    </div>`;
+  }).join('');
+  return `<div class="stat"><div class="card"><span>Funcionários</span><b>${Object.values(G.staff).reduce((a, b) => a + b, 0)}</b></div>
+    <div class="card"><span>Folha por dia</span><b>${fmt(wagesPerDay())}</b></div>
+    <div class="card"><span>Salários pendentes</span><b class="${G.debt ? 'neg' : 'pos'}">${fmt(G.debt || 0)}</b></div></div>
+    <div class="grid g2">${cards}</div>`;
 }
 function upgView(){
   const rooms = allRooms().map(room => {
@@ -4343,7 +4519,7 @@ function upgView(){
   }).join('');
   const hotel = Object.entries(UPGRADES).map(([k,u]) => `<div class="role"><h3>${u.name}</h3><p>${u.desc}</p><div class="btns">${G.upg[k] ? '<button disabled>Concluído</button>' : `<button data-upg="${k}" ${G.money < u.cost ? 'disabled' : ''}>Comprar · ${fmt(u.cost)}</button>`}</div></div>`).join('');
   const f3gate = floor3Gate(), floor3 = `<div class="role"><h3>3º andar</h3><p>${G.floor3 ? 'Liberado · quartos 301–303' : `Presidenciais ${presidentialCount()}/${PRES_TOTAL}${f3gate ? ' · ' + f3gate : ''}`}</p><div class="btns">${G.floor3 ? '<button disabled>Andar liberado</button>' : `<button data-floor3="1" ${f3gate || G.money < FLOOR3_PRICE ? 'disabled' : ''}>Liberar · ${fmt(FLOOR3_PRICE)}</button>`}</div></div>`;
-  return `<p class="sub">Quartos · etapas de reforma</p><div class="staff">${floor3}${rooms}</div><p class="sub" style="margin-top:16px">Hotel</p><div class="staff">${hotel}</div>`;
+  return `<p class="sub">Expansão</p><div class="staff">${floor3}</div><p class="sub" style="margin-top:16px">Hotel</p><div class="staff">${hotel}</div>`;
 }
 /* Filiais: exigem Hotel Plus (10★) na filial anterior e o valor em caixa. Comprar a filial já a ativa. */
 function branchView(){
@@ -6542,7 +6718,7 @@ class SaveSystem {
   constructor(key){ this.key = key; this.version = 2; }
   snapshot(){
     return {v:this.version, money:G.money, rep:G.rep, day:G.day, t:G.t, elapsed:G.elapsed, incomeToday:G.incomeToday, expenseToday:G.expenseToday,
-            served:G.served, debt:G.debt, friend:G.friend, guestSeq, upg:G.upg, staff:G.staff, staffLv:G.staffLv, branch:G.branch, owned:G.owned,
+            served:G.served, debt:G.debt, friend:G.friend, guestSeq, upg:G.upg, staff:G.staff, staffLv:G.staffLv, pay:G.pay, hist:G.hist, branch:G.branch, owned:G.owned,
             plus:G.plus, partners:G.partners, rooms:ROOMS.map(r => ({owned:r.owned, level:r.level, decor:r.decor, decorOwned:r.decorOwned})), upper:UPPER.map(r => ({owned:r.owned, level:r.level, decor:r.decor, decorOwned:r.decorOwned})), upper2:UPPER2.map(r => ({owned:r.owned, level:r.level, decor:r.decor, decorOwned:r.decorOwned})), floor3:!!G.floor3, games:G.games, log:G.log.slice(0, 40)};
   }
   save(){ try { localStorage.setItem(this.key, JSON.stringify(this.snapshot())); } catch(e){ /* sem armazenamento: o jogo segue sem salvar */ } }
@@ -6558,6 +6734,8 @@ class SaveSystem {
       guestSeq = d.guestSeq || 0;
       G.upg = Object.assign({bar:false, floor:false, light:false}, d.upg);
       G.staffLv = Object.assign({recep:1, maid:1}, d.staffLv);
+      G.pay = Object.assign({recep:'padrao', maid:'padrao', chef:'padrao', waiter:'padrao'}, d.pay); for (const k in G.pay) if (!PAY[G.pay[k]]) G.pay[k] = 'padrao';
+      G.hist = Array.isArray(d.hist) ? d.hist.filter(h => h && Number.isFinite(h.inc)).slice(-14) : [];
       for (const k of Object.keys(G.upg)) if (G.upg[k]) applyUpgrade(k);   // antes das salas: buildRoom usa G.upg.light
       ROOMS.forEach((r, i) => { const s = d.rooms && d.rooms[i]; if (s){ r.owned = s.owned; r.level = s.level; initDecor(r, roomBase(r)); loadDecor(r, s); buildRoom(r); } });
       UPPER2.forEach((r, i) => { const s = d.upper2 && d.upper2[i]; if (s){ r.owned = !!s.owned; r.level = s.owned ? Math.min(3, Math.max(1, s.level || 1)) : 0; initDecor(r, roomBase(r)); loadDecor(r, s); buildRoom(r); } });
