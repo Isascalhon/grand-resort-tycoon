@@ -352,12 +352,20 @@ body.sr-on .hud,body.sr-on .help,body.sr-on #ch,body.sr-on #prompt{display:none}
       <button class="cta" type="submit">Criar conta e jogar</button>
     </form>
     <form id="fForgot" novalidate hidden>
-      <p class="note" style="margin:0">Informe o e-mail da sua conta. Enviaremos um link para você criar uma nova senha.</p>
+      <p class="note" style="margin:0" id="fHint">Informe o e-mail da sua conta. Enviaremos um link para você criar uma nova senha.</p>
       <label>E-mail<input type="email" id="fEmail" autocomplete="email" required></label>
-      <button class="cta" type="submit">Enviar link de redefinição</button>
+      <label class="localOnly" hidden>Código de recuperação (recebido no cadastro)<input type="text" id="fCode" autocomplete="off" placeholder="XXXX-XXXX" style="text-transform:uppercase;letter-spacing:.12em"></label>
+      <label class="localOnly" hidden>Nova senha (mínimo 6 caracteres)<span class="pw"><input type="password" id="fNew" autocomplete="new-password"><button type="button" data-eye="fNew">Mostrar</button></span></label>
+      <button class="cta" type="submit" id="fSubmit">Enviar link de redefinição</button>
       <button class="link" type="button" id="backLogin">Voltar para o login</button>
     </form>
+    <div id="fCodeBox" hidden style="display:flex;flex-direction:column;gap:10px">
+      <p class="note" style="margin:0">Conta criada! Anote o seu <b>código de recuperação</b>. Ele é a única forma de criar uma nova senha se você esquecer a atual.</p>
+      <div id="codeShow" style="font:700 26px/1.2 monospace;letter-spacing:.16em;text-align:center;padding:14px;border-radius:12px;border:1px dashed var(--brass);color:var(--brass);background:rgba(216,166,74,.08)"></div>
+      <button class="cta" type="button" id="codeOk">Já anotei · entrar no jogo</button>
+    </div>
     <p class="msg" id="authMsg" role="status" aria-live="polite"></p>
+    <p class="note" id="authNote" style="margin:0;font-size:12px" hidden></p>
   </div>
 </div>
 <div class="overlay modal" id="rank" hidden>
@@ -7815,52 +7823,106 @@ addEventListener('beforeunload', () => { if (!saveBlocked) GAME.save.save(); });
    configuração do app da Web abaixo e publique as regras do arquivo docs/firestore.rules.
    ============================================================ */
 const FIREBASE_CONFIG = null;   // ex.: {apiKey:'...', authDomain:'...', projectId:'...', appId:'...'}
-const ACCOUNT = {on:false, user:null, verified:false, lastPush:0, db:null, auth:null, rankBy:'money'};
+const ACCOUNT = {be:null, user:null, verified:false, lastPush:0, rankBy:'money', signup:false};
 const OWNER_KEY = 'grand_resort_owner';
 const lsGet = k => { try { return localStorage.getItem(k); } catch(e){ return null; } };
 const lsSet = (k, v) => { try { v === null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e){ /* sem armazenamento */ } };
 const AUTH_ERR = {'auth/invalid-email':'E-mail inválido.', 'auth/user-not-found':'E-mail ou senha incorretos.', 'auth/wrong-password':'E-mail ou senha incorretos.',
   'auth/invalid-credential':'E-mail ou senha incorretos.', 'auth/invalid-login-credentials':'E-mail ou senha incorretos.', 'auth/email-already-in-use':'Este e-mail já tem uma conta. Use "Entrar".',
   'auth/weak-password':'A senha precisa ter pelo menos 6 caracteres.', 'auth/too-many-requests':'Muitas tentativas. Aguarde alguns minutos e tente de novo.',
-  'auth/network-request-failed':'Sem conexão com a internet. Verifique a rede e tente de novo.', 'auth/missing-email':'Informe o e-mail.'};
+  'auth/network-request-failed':'Sem conexão com a internet. Verifique a rede e tente de novo.', 'auth/missing-email':'Informe o e-mail.',
+  'local/bad-code':'E-mail ou código de recuperação incorretos.', 'local/storage':'O navegador não deixou salvar a conta (armazenamento bloqueado).'};
+const authErr = code => { const e = new Error(code); e.code = code; return e; };
 const authMsg = (t, kind = 'bad') => { const m = $('authMsg'); m.textContent = t; m.className = 'msg ' + kind; };
 const escapeHTML = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
 function authView(v){
-  $('fLogin').hidden = v !== 'login'; $('fSignup').hidden = v !== 'signup'; $('fForgot').hidden = v !== 'forgot';
+  $('fLogin').hidden = v !== 'login'; $('fSignup').hidden = v !== 'signup'; $('fForgot').hidden = v !== 'forgot'; $('fCodeBox').hidden = v !== 'code';
+  document.querySelector('#auth .tabs2').hidden = v === 'code';
   $('tabLogin').setAttribute('aria-selected', v !== 'signup'); $('tabSignup').setAttribute('aria-selected', v === 'signup'); authMsg('', '');
 }
 function authBusy(form, on){ form.querySelectorAll('button, input').forEach(b => { b.disabled = on; }); }
-// sobe o progresso e a linha do ranking (no máximo a cada 20 s, ou já, com force)
+
+/* Backend online: Firebase Authentication + Firestore (saves/{uid} privado, ranking/{uid} público) */
+function firebaseBackend(){
+  firebase.initializeApp(FIREBASE_CONFIG);
+  const auth = firebase.auth(), db = firebase.firestore(); auth.languageCode = 'pt';
+  const pack = u => u && {uid:u.uid, name:u.displayName || 'Gerente', email:u.email};
+  return {online:true,
+    init(cb){ auth.onAuthStateChanged(u => cb(pack(u))); },
+    async signIn(em, pw){ await auth.signInWithEmailAndPassword(em, pw); },
+    async signUp(nm, em, pw){ const c = await auth.createUserWithEmailAndPassword(em, pw); await c.user.updateProfile({displayName:nm}); return {user:pack(auth.currentUser)}; },
+    async reset(em){ await auth.sendPasswordResetEmail(em); },
+    async signOut(){ await auth.signOut(); },
+    async pull(u){ const d = await db.collection('saves').doc(u.uid).get(); return d.exists ? d.data().save : null; },
+    push(u, save, st){ const ts = firebase.firestore.FieldValue.serverTimestamp();
+      db.collection('saves').doc(u.uid).set({save, updated:ts}).catch(e => console.warn('[nuvem]', e));
+      db.collection('ranking').doc(u.uid).set(Object.assign({name:u.name.slice(0, 20), updated:ts}, st)).catch(e => console.warn('[ranking]', e)); },
+    async top(by){ const snap = await db.collection('ranking').orderBy(by, 'desc').limit(10).get(); const out = []; snap.forEach(d => out.push(Object.assign({id:d.id}, d.data()))); return out; },
+  };
+}
+/* Backend local: as contas ficam neste navegador. A senha e o código de recuperação nunca são guardados em texto:
+   só o hash PBKDF2-SHA-256 (120 mil iterações) com sal aleatório. Cada conta guarda o próprio progresso */
+function localBackend(){
+  const KEY = 'grand_resort_accounts', SESSION = 'grand_resort_session';
+  const load = () => { try { return JSON.parse(lsGet(KEY)) || {}; } catch(e){ return {}; } };
+  const store = db => { try { localStorage.setItem(KEY, JSON.stringify(db)); } catch(e){ throw authErr('local/storage'); } };
+  const hex = b => Array.from(new Uint8Array(b), x => x.toString(16).padStart(2, '0')).join('');
+  const salt = () => hex(crypto.getRandomValues(new Uint8Array(16)));
+  async function hash(text, sl){
+    const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(text), 'PBKDF2', false, ['deriveBits']);
+    return hex(await crypto.subtle.deriveBits({name:'PBKDF2', hash:'SHA-256', salt:new TextEncoder().encode(sl), iterations:120000}, k, 256));
+  }
+  const norm = em => em.trim().toLowerCase();
+  const validEmail = em => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(em);
+  const pack = (id, a) => ({uid:'local:' + id, id, name:a.name, email:id});
+  let onUser = () => {};
+  return {online:false,
+    init(cb){ onUser = cb; const id = lsGet(SESSION), a = id && load()[id]; cb(a ? pack(id, a) : null); },
+    async signIn(em, pw){ const id = norm(em), a = load()[id]; if (!validEmail(id)) throw authErr('auth/invalid-email');
+      if (!a || await hash(pw, a.salt) !== a.hash) throw authErr('auth/invalid-credential');
+      lsSet(SESSION, id); onUser(pack(id, a)); },
+    async signUp(nm, em, pw){ const id = norm(em), db = load(); if (!validEmail(id)) throw authErr('auth/invalid-email');
+      if (db[id]) throw authErr('auth/email-already-in-use');
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(8)), b => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 32]).join('').replace(/^(.{4})/, '$1-');
+      const a = {name:nm, salt:salt(), rsalt:salt(), created:Date.now(), stats:{money:0, guests:0, rep:0, day:1}};
+      a.hash = await hash(pw, a.salt); a.rhash = await hash(code, a.rsalt);
+      db[id] = a; store(db); lsSet(SESSION, id); return {user:pack(id, a), code}; },
+    async reset(em, code, pw){ const id = norm(em), db = load(), a = db[id];
+      if (!a || await hash(code.trim().toUpperCase(), a.rsalt) !== a.rhash) throw authErr('local/bad-code');
+      a.salt = salt(); a.hash = await hash(pw, a.salt); store(db); },
+    async signOut(){ lsSet(SESSION, null); },
+    async pull(u){ const a = load()[u.id]; return a && a.save || null; },
+    push(u, save, st){ const db = load(), a = db[u.id]; if (!a) return; a.save = save; a.stats = st; try { store(db); } catch(e){ console.warn('[conta]', e); } },
+    async top(by){ const db = load(); return Object.entries(db).map(([id, a]) => Object.assign({id:'local:' + id, name:a.name}, a.stats || {})).sort((x, y) => (y[by] || 0) - (x[by] || 0)).slice(0, 10); },
+  };
+}
+// grava o progresso e a linha do ranking da conta (no máximo a cada 20 s, ou já, com force)
 function cloudPush(force){
   if (!ACCOUNT.verified || saveBlocked) return;
   const now = Date.now(); if (!force && now - ACCOUNT.lastPush < 20000) return; ACCOUNT.lastPush = now;
-  const u = ACCOUNT.user, ts = firebase.firestore.FieldValue.serverTimestamp();
-  ACCOUNT.db.collection('saves').doc(u.uid).set({save:JSON.stringify(GAME.save.snapshot()), updated:ts}).catch(e => console.warn('[nuvem]', e));
-  ACCOUNT.db.collection('ranking').doc(u.uid).set({name:(u.displayName || 'Gerente').slice(0, 20), money:Math.round(G.money), guests:guestSeq, rep:Math.round(G.rep*10)/10, day:G.day, updated:ts}).catch(e => console.warn('[ranking]', e));
+  ACCOUNT.be.push(ACCOUNT.user, JSON.stringify(GAME.save.snapshot()), {money:Math.round(G.money), guests:guestSeq, rep:Math.round(G.rep*10)/10, day:G.day});
 }
 function showAccountBar(){
   const a = $('acct'); a.hidden = false;
-  a.innerHTML = ACCOUNT.on && ACCOUNT.user ? `<span>Gerente: <b>${escapeHTML(ACCOUNT.user.displayName || ACCOUNT.user.email)}</b></span><button type="button" id="openRank">Ver ranking</button><button type="button" id="logout">Sair da conta</button>`
+  a.innerHTML = ACCOUNT.user ? `<span>Gerente: <b>${escapeHTML(ACCOUNT.user.name)}</b>${ACCOUNT.be.online ? '' : ' · conta deste navegador'}</span><button type="button" id="openRank">Ver ranking</button><button type="button" id="logout">Sair da conta</button>`
     : '<span>Modo offline: o progresso fica salvo só neste navegador.</span>';
-  if (ACCOUNT.on && ACCOUNT.user){
+  if (ACCOUNT.user){
     $('openRank').onclick = openRanking;
-    $('logout').onclick = async () => { cloudPush(true); await new Promise(r => setTimeout(r, 600)); await ACCOUNT.auth.signOut(); GAME.save.clear(); lsSet(OWNER_KEY, null); saveBlocked = true; location.reload(); };
+    $('logout').onclick = async () => { cloudPush(true); await new Promise(r => setTimeout(r, 400)); await ACCOUNT.be.signOut(); GAME.save.clear(); lsSet(OWNER_KEY, null); saveBlocked = true; location.reload(); };
   }
 }
-async function openRanking(){
-  $('rank').hidden = false; await drawRanking();
-}
+async function openRanking(){ cloudPush(true); $('rank').hidden = false; await drawRanking(); }
 async function drawRanking(){
   const by = ACCOUNT.rankBy, list = $('rkList');
   $('rkMoney').setAttribute('aria-selected', by === 'money'); $('rkGuests').setAttribute('aria-selected', by === 'guests');
   list.innerHTML = '<li><i>…</i><span>Carregando</span><b></b></li>';
   try {
-    const snap = await ACCOUNT.db.collection('ranking').orderBy(by, 'desc').limit(10).get();
-    if (snap.empty){ list.innerHTML = '<li><i>—</i><span>Ninguém no ranking ainda</span><b></b></li>'; return; }
-    let i = 0; list.innerHTML = '';
-    snap.forEach(d => { const r = d.data(), li = document.createElement('li'); i++;
-      if (ACCOUNT.user && d.id === ACCOUNT.user.uid) li.className = 'me';
-      li.innerHTML = `<i>${i}º</i><span>${escapeHTML(r.name || 'Gerente')}</span><b>${by === 'money' ? fmt(r.money || 0) : (r.guests || 0) + ' hóspedes'}</b>`; list.appendChild(li); });
+    const rows = await ACCOUNT.be.top(by);
+    if (!rows.length){ list.innerHTML = '<li><i>—</i><span>Ninguém no ranking ainda</span><b></b></li>'; return; }
+    list.innerHTML = '';
+    rows.forEach((r, i) => { const li = document.createElement('li');
+      if (ACCOUNT.user && r.id === ACCOUNT.user.uid) li.className = 'me';
+      li.innerHTML = `<i>${i + 1}º</i><span>${escapeHTML(r.name || 'Gerente')}</span><b>${by === 'money' ? fmt(r.money || 0) : (r.guests || 0) + ' hóspedes'}</b>`; list.appendChild(li); });
   } catch(e){ list.innerHTML = '<li><i>!</i><span>Não foi possível carregar o ranking agora.</span><b></b></li>'; console.warn('[ranking]', e); }
 }
 $('rkMoney').onclick = () => { ACCOUNT.rankBy = 'money'; drawRanking(); };
@@ -7873,46 +7935,61 @@ $('tabLogin').onclick = () => authView('login'); $('tabSignup').onclick = () => 
 $('goForgot').onclick = () => { $('fEmail').value = $('lEmail').value; authView('forgot'); };
 $('backLogin').onclick = () => authView('login');
 (function initAccounts(){
-  if (!FIREBASE_CONFIG || !window.firebase || !firebase.auth){ showAccountBar(); return; }
-  try { firebase.initializeApp(FIREBASE_CONFIG); } catch(e){ console.warn('[firebase]', e); showAccountBar(); return; }
-  ACCOUNT.on = true; ACCOUNT.auth = firebase.auth(); ACCOUNT.db = firebase.firestore();
-  ACCOUNT.auth.languageCode = 'pt';
+  try {
+    if (FIREBASE_CONFIG && window.firebase && firebase.auth) ACCOUNT.be = firebaseBackend();
+    else if (window.crypto && crypto.subtle) ACCOUNT.be = localBackend();
+  } catch(e){ console.warn('[contas]', e); }
+  if (!ACCOUNT.be){ showAccountBar(); return; }   // sem nuvem e sem criptografia (ex.: file://): segue offline
+  const be = ACCOUNT.be;
+  if (!be.online){
+    $('authNote').hidden = false; $('authNote').textContent = 'As contas ficam salvas neste navegador. Para jogar com a mesma conta em outro computador, o jogo precisa estar ligado à nuvem.';
+    $('fHint').textContent = 'Informe o e-mail da conta, o código de recuperação que apareceu no cadastro e a nova senha.';
+    document.querySelectorAll('#fForgot .localOnly').forEach(l => { l.hidden = false; }); $('fSubmit').textContent = 'Criar nova senha';
+  }
   $('start').hidden = true; $('auth').hidden = false;
   $('fLogin').onsubmit = async e => { e.preventDefault(); const f = e.target, em = $('lEmail').value.trim(), pw = $('lPass').value;
     if (!em || !pw) return authMsg('Preencha e-mail e senha.');
     authBusy(f, true); authMsg('Entrando…', 'good');
-    try { await ACCOUNT.auth.signInWithEmailAndPassword(em, pw); } catch(err){ authMsg(AUTH_ERR[err.code] || 'Não foi possível entrar. Tente de novo.'); authBusy(f, false); } };
+    try { await be.signIn(em, pw); } catch(err){ authMsg(AUTH_ERR[err.code] || 'Não foi possível entrar. Tente de novo.'); authBusy(f, false); } };
   $('fSignup').onsubmit = async e => { e.preventDefault(); const f = e.target, nm = $('sName').value.trim(), em = $('sEmail').value.trim(), pw = $('sPass').value;
     if (nm.length < 2) return authMsg('Escolha um nome com pelo menos 2 letras.');
+    if (!em) return authMsg('Informe o e-mail.');
     if (pw.length < 6) return authMsg('A senha precisa ter pelo menos 6 caracteres.');
     if (pw !== $('sPass2').value) return authMsg('As senhas não são iguais.');
-    authBusy(f, true); authMsg('Criando a sua conta…', 'good'); ACCOUNT.signup = nm;
-    try { const c = await ACCOUNT.auth.createUserWithEmailAndPassword(em, pw); await c.user.updateProfile({displayName:nm}); ACCOUNT.signup = null; ACCOUNT.afterSignup && ACCOUNT.afterSignup(c.user); }
-    catch(err){ ACCOUNT.signup = null; authMsg(AUTH_ERR[err.code] || 'Não foi possível criar a conta. Tente de novo.'); authBusy(f, false); } };
+    authBusy(f, true); authMsg('Criando a sua conta…', 'good'); ACCOUNT.signup = true;
+    try {
+      const r = await be.signUp(nm, em, pw); ACCOUNT.signup = false;
+      if (r.code){ $('codeShow').textContent = r.code; authView('code'); $('codeOk').onclick = () => enter(r.user); }
+      else enter(r.user);
+    } catch(err){ ACCOUNT.signup = false; authMsg(AUTH_ERR[err.code] || 'Não foi possível criar a conta. Tente de novo.'); authBusy(f, false); } };
   $('fForgot').onsubmit = async e => { e.preventDefault(); const f = e.target, em = $('fEmail').value.trim();
     if (!em) return authMsg('Informe o e-mail da conta.');
+    if (!be.online){ const code = $('fCode').value, pw = $('fNew').value;
+      if (!code.trim()) return authMsg('Informe o código de recuperação.');
+      if (pw.length < 6) return authMsg('A nova senha precisa ter pelo menos 6 caracteres.'); }
     authBusy(f, true);
-    try { await ACCOUNT.auth.sendPasswordResetEmail(em); authMsg('Pronto! Se este e-mail tiver conta, o link de nova senha chega em instantes. Confira também o spam.', 'good'); }
-    catch(err){ authMsg(AUTH_ERR[err.code] || 'Não foi possível enviar o e-mail agora.'); }
+    try {
+      if (be.online){ await be.reset(em); authMsg('Pronto! Se este e-mail tiver conta, o link de nova senha chega em instantes. Confira também o spam.', 'good'); }
+      else { await be.reset(em, $('fCode').value, $('fNew').value); $('fCode').value = $('fNew').value = ''; authView('login'); $('lEmail').value = em; authMsg('Senha alterada! Entre com a nova senha.', 'good'); }
+    } catch(err){ authMsg(AUTH_ERR[err.code] || 'Não foi possível concluir agora.'); }
     authBusy(f, false); };
-  // depois de entrar: se o progresso local não é desta conta, baixa o da nuvem e recomeça o jogo com ele
+  // depois de entrar: se o progresso deste navegador não é desta conta, carrega o da conta e recomeça o jogo com ele
   async function enter(u){
     ACCOUNT.user = u;
     const owner = lsGet(OWNER_KEY);
     if (owner !== u.uid){
       authMsg('Carregando o seu progresso…', 'good');
-      let cloud = null;
-      try { const d = await ACCOUNT.db.collection('saves').doc(u.uid).get(); cloud = d.exists ? d.data().save : null; } catch(e){ console.warn('[nuvem]', e); }
-      // progresso deste navegador sem dono (de antes das contas) passa a ser da primeira conta criada nele
-      if (!cloud && !owner && GAME.save.raw()){ lsSet(OWNER_KEY, u.uid); ACCOUNT.verified = true; cloudPush(true); }
-      else { saveBlocked = true; cloud ? lsSet(GAME.save.key, cloud) : GAME.save.clear(); lsSet(OWNER_KEY, u.uid); location.reload(); return; }
+      let saved = null;
+      try { saved = await be.pull(u); } catch(e){ console.warn('[conta]', e); }
+      // progresso deste navegador sem dono (de antes das contas) passa a ser da primeira conta que entrar
+      if (!saved && !owner && GAME.save.raw()){ lsSet(OWNER_KEY, u.uid); ACCOUNT.verified = true; cloudPush(true); }
+      else { saveBlocked = true; saved ? lsSet(GAME.save.key, saved) : GAME.save.clear(); lsSet(OWNER_KEY, u.uid); location.reload(); return; }
     }
     ACCOUNT.verified = true; $('auth').hidden = true; $('start').hidden = false; showAccountBar(); cloudPush(true);
   }
-  ACCOUNT.afterSignup = u => enter(u);
-  ACCOUNT.auth.onAuthStateChanged(u => {
-    if (!u){ $('auth').hidden = false; $('start').hidden = true; return; }
-    if (ACCOUNT.signup) return;   // cadastro em andamento: entra depois de gravar o nome
+  be.init(u => {
+    if (!u){ ACCOUNT.user = null; $('auth').hidden = false; $('start').hidden = true; return; }
+    if (ACCOUNT.signup) return;   // cadastro em andamento: entra depois de gravar o nome (e mostrar o código)
     enter(u);
   });
   setInterval(() => cloudPush(false), 20000);
